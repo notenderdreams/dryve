@@ -25,6 +25,8 @@ pub fn run() -> Result<()> {
     match &cli.command {
         Commands::Pull { url } => {
             println!("Pulling content from: {}", url);
+            let html = crate::drive::fetch_drive(url)?;
+            println!("{:#}", html);
         }
         Commands::Sync => {
             println!("Syncing with drive...");
