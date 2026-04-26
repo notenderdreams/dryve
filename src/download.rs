@@ -1,18 +1,21 @@
 use crate::node::{Node, NodeType};
 use crate::pool::{FileTask, run};
+use crate::utils::sanitize_name;
 use anyhow::Result;
 use reqwest::blocking::Client;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 
-fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>) -> Result<()> {
+pub fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>, create_dirs: bool) -> Result<()> {
     match node.node_type {
         NodeType::Folder => {
-            let dir = base.join(&node.name);
-            fs::create_dir_all(&dir)?;
+            let dir = base.join(sanitize_name(&node.name));
+            if create_dirs {
+                fs::create_dir_all(&dir)?;
+            }
             for child in &node.children {
-                collect_tasks(child, &dir, tasks)?;
+                collect_tasks(child, &dir, tasks, create_dirs)?;
             }
         }
         NodeType::File => {
@@ -20,7 +23,7 @@ fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>) -> Result<
                 tasks.push(FileTask {
                     id:   id.clone(),
                     name: node.name.clone(),
-                    path: base.join(&node.name),
+                    path: base.join(sanitize_name(&node.name)),
                 });
             }
         }
@@ -85,7 +88,7 @@ fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
 
 pub fn download_tree(node: &Node, base: &Path, threads: usize) -> Result<()> {
     let mut tasks = Vec::new();
-    collect_tasks(node, base, &mut tasks)?;
+    collect_tasks(node, base, &mut tasks, true)?;
 
     let errors = run(
         tasks,

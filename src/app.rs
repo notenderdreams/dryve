@@ -27,7 +27,7 @@ pub fn run() -> Result<()> {
             crate::cmd_pull::run(url)?;
         }
         Commands::Sync => {
-            println!("Syncing with drive...");
+            crate::cmd_sync::run()?;
         }
     }
 

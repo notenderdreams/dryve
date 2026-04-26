@@ -1,6 +1,6 @@
+use crate::node::{Node, NodeType};
 use anyhow::Result;
 
-use crate::node::{Node, NodeType};
 
 pub fn parse_html(html: &str) -> Result<Node> {
     // 1. Extract folder name from <title>

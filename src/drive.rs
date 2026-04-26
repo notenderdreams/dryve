@@ -51,6 +51,10 @@ pub fn fetch_drive(url: &str) -> Result<Node> {
         .and_then(|s| s.split(['?', '&', '/']).next())
         .ok_or_else(|| anyhow::anyhow!("could not extract folder ID from URL: {}", url))?;
 
+    fetch_from_id(id)
+}
+
+pub fn fetch_from_id(id: &str) -> Result<Node> {
     let html = fetch_folder(id)?;
     let mut root = parse_html(&html)?;
     root.id = Some(id.to_string());

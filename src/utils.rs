@@ -188,3 +188,11 @@ fn fmt_size(bytes: u64) -> String {
     }
     format!("{:.2} {}", val, units[i])
 }
+
+pub fn sanitize_name(name: &str) -> String {
+    let sanitized: String = name
+        .chars()
+        .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
+        .collect();
+    sanitized.trim_end_matches(&[' ', '.'][..]).to_string()
+}
