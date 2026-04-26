@@ -1,12 +1,13 @@
 use colored::*;
+use serde::{Serialize, Deserialize};
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub enum NodeType {
     Folder,
     File,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct Node {
     pub name: String,
     pub node_type: NodeType,
