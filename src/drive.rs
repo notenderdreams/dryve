@@ -10,22 +10,27 @@ fn fetch_folder(id: &str) -> Result<String> {
 }
 
 fn fetch_recursive(node: &mut Node) -> Result<()> {
-    let results: Vec<(String, Vec<Node>)> = node.children
+    let results: Vec<(String, Vec<Node>)> = node
+        .children
         .par_iter()
         .filter_map(|child| {
-            if let NodeType::Folder = child.node_type {
-                if let Some(ref id) = child.id {
-                    let html = fetch_folder(id).ok()?;
-                    let sub = parse_html(&html).ok()?;
-                    return Some((id.clone(), sub.children));
-                }
+            if let NodeType::Folder = child.node_type
+                && let Some(ref id) = child.id
+            {
+                let html = fetch_folder(id).ok()?;
+                let sub = parse_html(&html).ok()?;
+                return Some((id.clone(), sub.children));
             }
             None
         })
         .collect();
 
     for (id, children) in results {
-        if let Some(child) = node.children.iter_mut().find(|c| c.id.as_deref() == Some(&id)) {
+        if let Some(child) = node
+            .children
+            .iter_mut()
+            .find(|c| c.id.as_deref() == Some(&id))
+        {
             child.children = children;
         }
     }

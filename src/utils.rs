@@ -37,11 +37,7 @@ impl Progress {
                 let pct = (self.downloaded as f64 / total as f64).min(1.0);
                 let filled = (pct * self.bar_width as f64) as usize;
                 let empty = self.bar_width - filled;
-                format!(
-                    "[{}{}]",
-                    "=".repeat(filled).blue(),
-                    " ".repeat(empty)
-                )
+                format!("[{}{}]", "=".repeat(filled).blue(), " ".repeat(empty))
             }
             _ => {
                 let pos = (self.downloaded / 8192) as usize % (self.bar_width + 1);
@@ -59,7 +55,7 @@ impl Progress {
 
         let right = match self.total {
             Some(_) => format!(" {} / {}  {}ps", size_str, total_str, rate_str),
-            None    => format!(" {}  {}ps", size_str, rate_str),
+            None => format!(" {}  {}ps", size_str, rate_str),
         };
 
         print!("\r  {}{}", bar, right);
@@ -69,8 +65,8 @@ impl Progress {
 
 fn fmt_bytes(b: u64) -> String {
     match b {
-        0..=999         => format!("{} B",     b),
+        0..=999 => format!("{} B", b),
         1_000..=999_999 => format!("{:.1} KB", b as f64 / 1_000.0),
-        _               => format!("{:.1} MB", b as f64 / 1_000_000.0),
+        _ => format!("{:.1} MB", b as f64 / 1_000_000.0),
     }
 }

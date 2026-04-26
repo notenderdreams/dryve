@@ -1,5 +1,5 @@
 use colored::*;
-use serde::{Serialize, Deserialize};
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize)]
 pub enum NodeType {
@@ -43,7 +43,7 @@ impl Node {
 
         let name = match self.node_type {
             NodeType::Folder => self.name.magenta().bold(),
-            NodeType::File => self.name .normal(),
+            NodeType::File => self.name.normal(),
         };
 
         println!("{}{}{}", prefix.bright_black(), connector, name);

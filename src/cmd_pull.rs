@@ -1,5 +1,5 @@
-use crate::drive::fetch_drive;
 use crate::download::download_tree;
+use crate::drive::fetch_drive;
 use anyhow::Result;
 use colored::Colorize;
 use std::fs;
@@ -15,7 +15,7 @@ pub fn run(url: &str) -> Result<()> {
         return Ok(());
     }
 
-    download_tree(&root, Path::new("."))?;
+    download_tree(&root, Path::new("."), 8)?;
 
     let json_path = Path::new(".").join(&root.name).join("dryve.json");
     let json = serde_json::to_string_pretty(&root)?;

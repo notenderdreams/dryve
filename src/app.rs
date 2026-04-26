@@ -1,7 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
 
-
 #[derive(Parser)]
 #[command(name = "dryve")]
 pub struct Cli {
