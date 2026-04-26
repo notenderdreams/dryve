@@ -25,12 +25,12 @@ pub fn run(url: &str) -> Result<()> {
 }
 
 fn confirm_download() -> Result<bool> {
-    print!("Start download?{}", " [y/N]:".blue());
+    print!("Start download?{}", " [Y/n]:".blue());
     io::stdout().flush()?;
 
     let mut input = String::new();
     io::stdin().read_line(&mut input)?;
 
     let response = input.trim().to_lowercase();
-    Ok(matches!(response.as_str(), "y" | "yes"))
+    Ok(matches!(response.as_str(), "y" | "yes" | ""))
 }
