@@ -31,6 +31,7 @@ pub fn fetch_drive(url: &str) -> Result<Node> {
 
     let html = fetch_folder(id)?;
     let mut root = parse_html(&html)?;
+    root.id = Some(id.to_string());
     fetch_recursive(&mut root)?;
     Ok(root)
 }
