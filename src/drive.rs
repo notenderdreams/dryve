@@ -1,6 +1,7 @@
 use crate::node::{Node, NodeType};
 use crate::parser::parse_html;
 use anyhow::Result;
+use rayon::prelude::*;
 
 fn fetch_folder(id: &str) -> Result<String> {
     let url = format!("https://drive.google.com/drive/folders/{}?hl=en", id);
@@ -9,16 +10,32 @@ fn fetch_folder(id: &str) -> Result<String> {
 }
 
 fn fetch_recursive(node: &mut Node) -> Result<()> {
-    for child in &mut node.children {
-        if let NodeType::Folder = child.node_type {
-            if let Some(ref id) = child.id.clone() {
-                let html = fetch_folder(id)?;
-                let mut sub = parse_html(&html)?;
-                std::mem::swap(&mut child.children, &mut sub.children);
-                fetch_recursive(child)?;
+    let results: Vec<(String, Vec<Node>)> = node.children
+        .par_iter()
+        .filter_map(|child| {
+            if let NodeType::Folder = child.node_type {
+                if let Some(ref id) = child.id {
+                    let html = fetch_folder(id).ok()?;
+                    let sub = parse_html(&html).ok()?;
+                    return Some((id.clone(), sub.children));
+                }
             }
+            None
+        })
+        .collect();
+
+    for (id, children) in results {
+        if let Some(child) = node.children.iter_mut().find(|c| c.id.as_deref() == Some(&id)) {
+            child.children = children;
         }
     }
+
+    for child in &mut node.children {
+        if let NodeType::Folder = child.node_type {
+            fetch_recursive(child)?;
+        }
+    }
+
     Ok(())
 }
 
