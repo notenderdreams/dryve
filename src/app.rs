@@ -28,7 +28,7 @@ pub fn run() -> Result<()> {
             let html = crate::drive::fetch_drive(url)?;
             let root = crate::drive::parse_html(&html)?;
 
-            println!("{:#?}", root);
+            root.print();
         }
         Commands::Sync => {
             println!("Syncing with drive...");
