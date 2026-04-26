@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use crate::drive::fetch_drive;
 
 #[derive(Parser)]
 #[command(name = "dryve")]
@@ -24,10 +25,7 @@ pub fn run() -> Result<()> {
 
     match &cli.command {
         Commands::Pull { url } => {
-            println!("Pulling content from: {}", url);
-            let html = crate::drive::fetch_drive(url)?;
-            let root = crate::drive::parse_html(&html)?;
-
+            let root = fetch_drive(url)?;
             root.print();
         }
         Commands::Sync => {
