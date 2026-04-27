@@ -1,18 +1,20 @@
 <div align="center">
-
 <table>
-	<tr>
-		<td align="center" width="50%">
-			<img src="assets/dryve.svg" alt="dryve logo" width="400" />
-		</td>
-		<td align="center" width="50%">
-			<a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust" /></a><br />
-			<a href="#"><img src="https://img.shields.io/badge/version-v0.1.0-1f2937" alt="Version" /></a><br />
-			<a href="https://drive.google.com/"><img src="https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white" alt="Google Drive" /></a>
-		</td>
-	</tr>
-</table>
+<tr>
+<th>
+<img src="assets/dryve.svg" alt="dryve logo" width="400" />
+</th>
+</tr>
 
+<tr>
+<td align="center">
+
+[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](https://www.rust-lang.org/)
+[![Version](https://img.shields.io/badge/version-v0.1.0-1f2937)](#)
+[![Google Drive](https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white)](https://drive.google.com/)
+</td>
+</tr>
+</table>
 </div>
 
 `dryve` is a Rust CLI for Google Drive folders that keeps local files updated over time, like working with a GitHub repo.
