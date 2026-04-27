@@ -43,7 +43,7 @@ pub fn run() -> Result<()> {
     let json_path = Path::new("dryve.json");
 
     if !json_path.exists() {
-        println!("Error: dryve.json not found. Please run 'dryve init' first.");
+        println!("Error: dryve.json not found.");
         return Ok(());
     }
 
