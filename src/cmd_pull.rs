@@ -6,7 +6,7 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-pub fn run(url: &str) -> Result<()> {
+pub fn run(url: &str, threads: usize) -> Result<()> {
     let root = fetch_drive(url)?;
     let base = Path::new(".");
     let roots = vec![(root.clone(), base.to_path_buf(), ItemKind::Normal)];
@@ -27,7 +27,7 @@ pub fn run(url: &str) -> Result<()> {
         return Ok(());
     }
 
-    download_tree(&root, base, 8, &selected)?;
+    download_tree(&root, base, threads, &selected)?;
 
     let mut root = root;
     root.prune_missing(base);

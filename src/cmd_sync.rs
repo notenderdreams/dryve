@@ -38,8 +38,7 @@ impl SyncRoots {
     }
 }
 
-pub fn run() -> Result<()> {
-    let threads = 8;
+pub fn run(threads: usize) -> Result<()> {
     let json_path = Path::new("dryve.json");
 
     if !json_path.exists() {
