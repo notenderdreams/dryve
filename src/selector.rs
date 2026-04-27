@@ -82,8 +82,11 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
 
         match event::read()? {
             Event::Key(KeyEvent {
-                code, modifiers, ..
+                code, modifiers, kind, ..
             }) => {
+                if kind != event::KeyEventKind::Press {
+                    continue;
+                }
                 if modifiers.contains(KeyModifiers::CONTROL)
                     && matches!(code, KeyCode::Char('c') | KeyCode::Char('d'))
                 {
@@ -261,7 +264,7 @@ fn toggle(items: &[Item], idx: usize, sel: &mut HashSet<PathBuf>) {
 // Rendering:
 //
 // Uses the alternate screen buffer entered once at startup.
-// Every frame: MoveTo(0,0) + Clear(All), then queue every row, flush once.
+// Every frame: MoveTo to each row, overwrite content, clear rest of line.
 // Nothing is ever printed incrementally — the whole frame is atomic.
 
 fn draw(
@@ -275,10 +278,8 @@ fn draw(
     let list_height = rows.saturating_sub(1) as usize;
     let cols = cols as usize;
 
-    // One clear per frame — no incremental clearing.
-    queue!(out, cursor::MoveTo(0, 0), terminal::Clear(ClearType::All))?;
-
     // Item rows
+    let visible_count = items.len().saturating_sub(scroll).min(list_height);
     for (row, (i, item)) in items
         .iter()
         .enumerate()
@@ -367,7 +368,21 @@ fn draw(
         //   + prefix.len() + connector.len() = overhead
         let overhead = 2 + 3 + 1 + item.prefix.chars().count() + connector.chars().count();
         let name = trunc(&item.name, cols.saturating_sub(overhead));
-        queue!(out, Print(name), ResetColor)?;
+        queue!(
+            out,
+            Print(name),
+            ResetColor,
+            terminal::Clear(ClearType::UntilNewLine),
+        )?;
+    }
+
+    // Clear any leftover rows below the visible items (but above the status bar)
+    for row in visible_count..list_height {
+        queue!(
+            out,
+            cursor::MoveTo(0, row as u16),
+            terminal::Clear(ClearType::CurrentLine),
+        )?;
     }
 
     // Scroll position (top-right)
