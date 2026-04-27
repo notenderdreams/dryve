@@ -1,4 +1,3 @@
-use colored::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -27,34 +26,22 @@ impl Node {
         }
     }
 
-    pub fn print(&self) {
-        let name = match self.node_type {
-            NodeType::Folder => self.name.magenta().bold(),
-            NodeType::File => self.name.normal(),
-        };
-        println!("{}", name);
-        for (i, child) in self.children.iter().enumerate() {
-            let is_last = i == self.children.len() - 1;
-            child.print_tree("", is_last);
+    pub fn prune_missing(&mut self, base: &Path) -> bool {
+        let current_path = base.join(crate::utils::sanitize_name(&self.name));
+
+        match self.node_type {
+            NodeType::File => current_path.exists(),
+            NodeType::Folder => {
+                self.children
+                    .retain_mut(|child| child.prune_missing(&current_path));
+                current_path.is_dir()
+            }
         }
     }
 
-    fn print_tree(&self, prefix: &str, is_last: bool) {
-        let connector = if is_last { "└── " } else { "├── " };
-        let connector = connector.bright_black();
-
-        let name = match self.node_type {
-            NodeType::Folder => self.name.magenta().bold(),
-            NodeType::File => self.name.normal(),
-        };
-
-        println!("{}{}{}", prefix.bright_black(), connector, name);
-
-        let new_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
-        for (i, child) in self.children.iter().enumerate() {
-            let last_child = i == self.children.len() - 1;
-            child.print_tree(&new_prefix, last_child);
-        }
+    pub fn prune_missing_at_root(&mut self) {
+        self.children
+            .retain_mut(|child| child.prune_missing(Path::new(".")));
     }
 }
 

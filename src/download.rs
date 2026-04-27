@@ -3,9 +3,10 @@ use crate::pool::{FileTask, run};
 use crate::utils::sanitize_name;
 use anyhow::Result;
 use reqwest::blocking::Client;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{Read, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub fn collect_tasks(
     node: &Node,
@@ -93,9 +94,26 @@ pub fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
     Ok(downloaded)
 }
 
-pub fn download_tree(node: &Node, base: &Path, threads: usize) -> Result<()> {
-    let mut tasks = Vec::new();
-    collect_tasks(node, base, &mut tasks, true)?;
+pub fn download_tree(
+    node: &Node,
+    base: &Path,
+    threads: usize,
+    filter: &HashSet<PathBuf>,
+) -> Result<()> {
+    let mut all_tasks = Vec::new();
+    collect_tasks(node, base, &mut all_tasks, false)?;
+
+    let tasks: Vec<FileTask> = all_tasks
+        .into_iter()
+        .filter(|t| filter.contains(&t.path))
+        .collect();
+
+    // Ensure parent directories exist for the filtered files.
+    for t in &tasks {
+        if let Some(parent) = t.path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+    }
 
     let errors = run(
         tasks,

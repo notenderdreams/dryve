@@ -1,26 +1,41 @@
 use crate::download::download_tree;
 use crate::drive::fetch_drive;
-use crate::utils::{prompt_confirmation, sanitize_name};
+use crate::selector::{self, ItemKind};
+use crate::utils::sanitize_name;
 use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
 pub fn run(url: &str) -> Result<()> {
     let root = fetch_drive(url)?;
-    root.print();
+    let base = Path::new(".");
+    let roots = vec![(root.clone(), base.to_path_buf(), ItemKind::Normal)];
 
-    if !prompt_confirmation("Start Download")? {
-        println!("Download cancelled.");
+    let selection =
+        selector::select(&roots).map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
+
+    let selected = match selection {
+        Some(s) => s,
+        None => {
+            println!("Download cancelled.");
+            return Ok(());
+        }
+    };
+
+    if selected.is_empty() {
+        println!("Nothing selected.");
         return Ok(());
     }
 
-    download_tree(&root, Path::new("."), 8)?;
+    download_tree(&root, base, 8, &selected)?;
 
-    let json_path = Path::new(".")
-        .join(sanitize_name(&root.name))
-        .join("dryve.json");
+    let mut root = root;
+    root.prune_missing(base);
+
+    let json_path = base.join(sanitize_name(&root.name)).join("dryve.json");
     let json = serde_json::to_string_pretty(&root)?;
     fs::write(json_path, json)?;
 
+    println!("Pull complete.");
     Ok(())
 }

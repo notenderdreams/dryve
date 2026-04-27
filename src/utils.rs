@@ -1,7 +1,3 @@
-use colored::Colorize;
-use std::io;
-use std::io::Write;
-
 pub fn fmt_duration(secs: u64) -> String {
     if secs < 60 {
         format!("{}s", secs)
@@ -29,15 +25,4 @@ pub fn sanitize_name(name: &str) -> String {
         .map(|c| if "<>:\"/\\|?*".contains(c) { '_' } else { c })
         .collect();
     sanitized.trim_end_matches(&[' ', '.'][..]).to_string()
-}
-
-pub fn prompt_confirmation(prompt: &str) -> anyhow::Result<bool> {
-    print!("{}{}", prompt, " [Y/n]:".blue());
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    let response = input.trim().to_lowercase();
-    Ok(matches!(response.as_str(), "y" | "yes" | ""))
 }

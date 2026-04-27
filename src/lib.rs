@@ -8,4 +8,5 @@ mod node;
 mod parser;
 mod pool;
 mod progress;
+mod selector;
 mod utils;
