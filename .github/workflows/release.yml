@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v?[0-9]+\.[0-9]+\.[0-9]+'
+
+jobs:
+  publish:
+    name: Publishing for ${{ matrix.job.os-name }}-${{ matrix.job.architecture }}
+    runs-on: ${{ matrix.job.os }}
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        job:
+          - os: macos-latest
+            os-name: macos
+            target: x86_64-apple-darwin
+            architecture: x86_64
+
+          - os: macos-latest
+            os-name: macos
+            target: aarch64-apple-darwin
+            architecture: arm64
+
+          - os: ubuntu-latest
+            os-name: linux
+            target: x86_64-unknown-linux-gnu
+            architecture: x86_64
+
+          - os: ubuntu-latest
+            os-name: linux
+            target: aarch64-unknown-linux-gnu
+            architecture: arm64
+
+          - os: windows-latest
+            os-name: windows
+            target: x86_64-pc-windows-msvc
+            architecture: x86_64
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: ${{ matrix.job.target }}
+
+      - name: Cache Cargo registry & build
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install cross (for Linux cross-compiles)
+        if: matrix.job.os-name == 'linux'
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cross
+
+      - name: Build release binary
+        shell: bash
+        run: |
+          if [[ "${{ matrix.job.os-name }}" == "linux" ]]; then
+            cross build --locked --release --target ${{ matrix.job.target }}
+          else
+            cargo build --release --locked --target ${{ matrix.job.target }}
+          fi
+
+      - name: Install strip command for aarch64 Linux
+        if: matrix.job.target == 'aarch64-unknown-linux-gnu'
+        shell: bash
+        run: |
+          sudo apt update
+          sudo apt-get install -y binutils-aarch64-linux-gnu
+
+      - name: Package final binary
+        shell: bash
+        run: |
+          BINARY=target/${{ matrix.job.target }}/release/dryve
+          if [[ "${{ matrix.job.os-name }}" == "windows" ]]; then
+            BINARY=$BINARY.exe
+          fi
+
+          # Strip binaries (skip Windows)
+          if [[ "${{ matrix.job.os-name }}" != "windows" ]]; then
+            if [[ "${{ matrix.job.target }}" == "aarch64-unknown-linux-gnu" ]]; then
+              GCC_PREFIX="aarch64-linux-gnu-"
+            else
+              GCC_PREFIX=""
+            fi
+            "$GCC_PREFIX"strip $BINARY || true
+          fi
+
+          mkdir -p package
+          if [[ "${{ matrix.job.os-name }}" == "windows" ]]; then
+            cp $BINARY package/dryve.exe
+          else
+            cp $BINARY package/dryve
+          fi
+
+          mkdir -p assets
+          RELEASE_NAME=dryve-${GITHUB_REF/refs\/tags\//}-${{ matrix.job.os-name }}-${{ matrix.job.architecture }}
+
+          if [[ "${{ matrix.job.os-name }}" == "windows" ]]; then
+            powershell Compress-Archive -Path package/* -DestinationPath assets/$RELEASE_NAME.zip
+          else
+            tar czvf assets/$RELEASE_NAME.tar.gz -C package .
+          fi
+
+      - name: Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
