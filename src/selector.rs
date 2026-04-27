@@ -90,23 +90,19 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
                     break None;
                 }
                 match code {
-                    KeyCode::Up | KeyCode::Char('k') => {
-                        if cursor > 0 {
-                            cursor -= 1;
-                            if cursor < scroll {
-                                scroll = cursor;
-                            }
-                            dirty = true;
+                    KeyCode::Up | KeyCode::Char('k') if cursor > 0 => {
+                        cursor -= 1;
+                        if cursor < scroll {
+                            scroll = cursor;
                         }
+                        dirty = true;
                     }
-                    KeyCode::Down | KeyCode::Char('j') => {
-                        if cursor + 1 < items.len() {
-                            cursor += 1;
-                            if cursor >= scroll + list_height {
-                                scroll = cursor + 1 - list_height;
-                            }
-                            dirty = true;
+                    KeyCode::Down | KeyCode::Char('j') if cursor + 1 < items.len() => {
+                        cursor += 1;
+                        if cursor >= scroll + list_height {
+                            scroll = cursor + 1 - list_height;
                         }
+                        dirty = true;
                     }
                     KeyCode::Char(' ') => {
                         toggle(&items, cursor, &mut selected);
