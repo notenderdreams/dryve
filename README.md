@@ -18,9 +18,9 @@
 </table>
 </div>
 
-`dryve` is a Rust CLI for Google Drive folders that keeps local files updated over time, like working with a GitHub repo.
+`dryve` is a Rust CLI for pulling and syncing publicly shared Google Drive folders.
 
-It builds a local tree, lets you choose what to download in an interactive selector, and stores metadata in `dryve.json` so future sync runs can detect and apply remote changes.
+It fetches a Drive folder tree, lets you select files in an interactive terminal UI, downloads them locally, and stores metadata in `dryve.json` so later `sync` runs can apply remote changes.
 
 ## Features
 
@@ -29,11 +29,6 @@ It builds a local tree, lets you choose what to download in an interactive selec
 - Multi-threaded downloads using a Rayon thread pool.
 - Sync mode that detects added, updated, and removed files.
 - Safe filename sanitization for cross-platform local paths.
-
-## Requirements
-
-- Rust toolchain (edition 2024 capable).
-- Network access to Google Drive public folder URLs.
 
 ## Installation
 
