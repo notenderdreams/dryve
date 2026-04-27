@@ -76,6 +76,7 @@ jobs:
           sudo apt-get install -y binutils-aarch64-linux-gnu
 
       - name: Package final binary
+        id: package
         shell: bash
         run: |
           BINARY=target/${{ matrix.job.target }}/release/dryve
@@ -100,18 +101,22 @@ jobs:
             cp $BINARY package/dryve
           fi
 
-          mkdir -p assets
+          mkdir -p release-assets
           RELEASE_NAME=dryve-${GITHUB_REF/refs\/tags\//}-${{ matrix.job.os-name }}-${{ matrix.job.architecture }}
 
           if [[ "${{ matrix.job.os-name }}" == "windows" ]]; then
-            powershell Compress-Archive -Path package/* -DestinationPath assets/$RELEASE_NAME.zip
+            ASSET_PATH=release-assets/$RELEASE_NAME.zip
+            powershell Compress-Archive -Path package/* -DestinationPath $ASSET_PATH
           else
-            tar czvf assets/$RELEASE_NAME.tar.gz -C package .
+            ASSET_PATH=release-assets/$RELEASE_NAME.tar.gz
+            tar czvf $ASSET_PATH -C package .
           fi
+
+          echo "asset_path=$ASSET_PATH" >> "$GITHUB_OUTPUT"
 
       - name: Release assets
         uses: softprops/action-gh-release@v2
         with:
-          files: assets/*
+          files: ${{ steps.package.outputs.asset_path }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
