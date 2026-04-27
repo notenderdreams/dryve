@@ -6,7 +6,7 @@ use std::io::{self, Write};
 use std::path::PathBuf;
 
 pub struct FileTask {
-    pub id:   String,
+    pub id: String,
     pub name: String,
     pub path: PathBuf,
 }

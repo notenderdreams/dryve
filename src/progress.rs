@@ -1,9 +1,9 @@
+use crate::utils;
 use colored::Colorize;
 use std::io::{self, Write};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
-use crate::utils;
 
 struct StdoutState {
     active_names: Vec<String>,
@@ -11,12 +11,12 @@ struct StdoutState {
 }
 
 struct ProgressShared {
-    total:       usize,                // total work units (read-only, no sync needed)
-    done:        AtomicUsize,          // completed units
-    total_bytes: AtomicUsize,          // total bytes downloaded
-    started:     Instant,              // start time (read-only)
-    bar_width:   usize,                // width of the progress bar in chars
-    state:       Mutex<StdoutState>,   // exclusive access to state & stdout
+    total: usize,              // total work units (read-only, no sync needed)
+    done: AtomicUsize,         // completed units
+    total_bytes: AtomicUsize,  // total bytes downloaded
+    started: Instant,          // start time (read-only)
+    bar_width: usize,          // width of the progress bar in chars
+    state: Mutex<StdoutState>, // exclusive access to state & stdout
 }
 
 impl ProgressShared {
@@ -63,7 +63,11 @@ impl ProgressShared {
         }
 
         for name in &state.active_names {
-            buf.push_str(&format!("  {} {}\n", "downloading".bright_black(), name.white()));
+            buf.push_str(&format!(
+                "  {} {}\n",
+                "downloading".bright_black(),
+                name.white()
+            ));
         }
 
         buf.push_str(&self.bar_str(done, active));
@@ -143,15 +147,13 @@ impl ProgressHandle {
 
     pub fn complete(&self, name: &str, size: u64) {
         self.inner.done.fetch_add(1, Ordering::Relaxed);
-        self.inner.total_bytes.fetch_add(size as usize, Ordering::Relaxed);
+        self.inner
+            .total_bytes
+            .fetch_add(size as usize, Ordering::Relaxed);
         let name_owned = name.to_string();
         self.inner.update_stdout(|state| {
             state.active_names.retain(|n| n != &name_owned);
-            Some(format!(
-                "  {} {}",
-                "downloaded ".green(),
-                name.white()
-            ))
+            Some(format!("  {} {}", "downloaded ".green(), name.white()))
         });
     }
 
@@ -160,12 +162,7 @@ impl ProgressHandle {
         let name_owned = name.to_string();
         self.inner.update_stdout(|state| {
             state.active_names.retain(|n| n != &name_owned);
-            Some(format!(
-                "  {} {}",
-                "error      ".red(),
-                name.white()
-            ))
+            Some(format!("  {} {}", "error      ".red(), name.white()))
         });
     }
 }
-

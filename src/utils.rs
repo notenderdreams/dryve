@@ -1,6 +1,6 @@
+use colored::Colorize;
 use std::io;
 use std::io::Write;
-use colored::Colorize;
 
 pub fn fmt_duration(secs: u64) -> String {
     if secs < 60 {
@@ -31,8 +31,8 @@ pub fn sanitize_name(name: &str) -> String {
     sanitized.trim_end_matches(&[' ', '.'][..]).to_string()
 }
 
-pub fn confirm_download(prompt: &str) -> anyhow::Result<bool> {
-    print!("{}{}",prompt, " [Y/n]:".blue());
+pub fn prompt_confirmation(prompt: &str) -> anyhow::Result<bool> {
+    print!("{}{}", prompt, " [Y/n]:".blue());
     io::stdout().flush()?;
 
     let mut input = String::new();

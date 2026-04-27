@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum NodeType {
     Folder,
     File,
 }
 
-#[derive(Debug,Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Node {
     pub name: String,
     pub node_type: NodeType,
@@ -56,12 +56,11 @@ impl Node {
             child.print_tree(&new_prefix, last_child);
         }
     }
-
 }
 
 #[derive(Debug)]
 pub struct Diff {
-    pub added:   Vec<(PathBuf, Node)>,
+    pub added: Vec<(PathBuf, Node)>,
     pub removed: Vec<(PathBuf, Node)>,
     pub updated: Vec<(PathBuf, Node, Node)>,
 }
@@ -82,21 +81,22 @@ impl Diff {
 }
 
 fn diff_recursive(old: &Node, new: &Node, current_path: &Path, diff: &mut Diff) {
-    let mut old_map: HashMap<&str, &Node> = old
-        .children
-        .iter()
-        .map(|n| (n.name.as_str(), n))
-        .collect();
+    let mut old_map: HashMap<&str, &Node> =
+        old.children.iter().map(|n| (n.name.as_str(), n)).collect();
 
     for new_child in new.children.iter() {
         let child_path = current_path.join(crate::utils::sanitize_name(&new_child.name));
         if let Some(&old_child) = old_map.get(new_child.name.as_str()) {
             old_map.remove(new_child.name.as_str());
-            
+
             match (&old_child.node_type, &new_child.node_type) {
                 (NodeType::File, NodeType::File) => {
                     if old_child.id != new_child.id {
-                        diff.updated.push((child_path.clone(), old_child.clone(), new_child.clone()));
+                        diff.updated.push((
+                            child_path.clone(),
+                            old_child.clone(),
+                            new_child.clone(),
+                        ));
                     }
                 }
                 (NodeType::Folder, NodeType::Folder) => {

@@ -1,7 +1,6 @@
 use crate::node::{Node, NodeType};
 use anyhow::Result;
 
-
 pub fn parse_html(html: &str) -> Result<Node> {
     // 1. Extract folder name from <title>
     let mut folder_name = "GDrive Folder".to_string();

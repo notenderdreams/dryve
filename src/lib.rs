@@ -7,5 +7,5 @@ mod drive;
 mod node;
 mod parser;
 mod pool;
-mod utils;
 mod progress;
+mod utils;

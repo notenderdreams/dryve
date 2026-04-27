@@ -7,7 +7,12 @@ use std::fs;
 use std::io::{Read, Write};
 use std::path::Path;
 
-pub fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>, create_dirs: bool) -> Result<()> {
+pub fn collect_tasks(
+    node: &Node,
+    base: &Path,
+    tasks: &mut Vec<FileTask>,
+    create_dirs: bool,
+) -> Result<()> {
     match node.node_type {
         NodeType::Folder => {
             let dir = base.join(sanitize_name(&node.name));
@@ -21,7 +26,7 @@ pub fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>, create
         NodeType::File => {
             if let Some(ref id) = node.id {
                 tasks.push(FileTask {
-                    id:   id.clone(),
+                    id: id.clone(),
                     name: node.name.clone(),
                     path: base.join(sanitize_name(&node.name)),
                 });
@@ -31,7 +36,7 @@ pub fn collect_tasks(node: &Node, base: &Path, tasks: &mut Vec<FileTask>, create
     Ok(())
 }
 
-fn build_client() -> Result<Client> {
+pub fn build_client() -> Result<Client> {
     Ok(Client::builder()
         .cookie_store(true)
         .user_agent("Mozilla/5.0")
@@ -54,7 +59,7 @@ fn extract_confirm_url(html: &str, id: &str) -> Result<String> {
     ))
 }
 
-fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
+pub fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
     let url = format!("https://drive.google.com/uc?export=download&id={}", task.id);
     let response = client.get(&url).send()?;
 
@@ -74,11 +79,13 @@ fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
     };
 
     let mut file = fs::File::create(&task.path)?;
-    let mut buf  = [0u8; 16384];
+    let mut buf = [0u8; 16384];
     let mut downloaded = 0;
     loop {
         let n = response.read(&mut buf)?;
-        if n == 0 { break; }
+        if n == 0 {
+            break;
+        }
         file.write_all(&buf[..n])?;
         downloaded += n as u64;
     }
