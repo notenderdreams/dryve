@@ -1,11 +1,17 @@
 <div align="center">
 
-# dryve
-
-[![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-v0.1.0-1f2937)](#)
-[![Edition](https://img.shields.io/badge/edition-2024-blue)](https://doc.rust-lang.org/edition-guide/rust-2024/index.html)
-[![Google Drive](https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white)](https://drive.google.com/)
+<table>
+	<tr>
+		<td align="center" width="50%">
+			<img src="assets/dryve.svg" alt="dryve logo" width="400" />
+		</td>
+		<td align="center" width="50%">
+			<a href="https://www.rust-lang.org/"><img src="https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust" alt="Rust" /></a><br />
+			<a href="#"><img src="https://img.shields.io/badge/version-v0.1.0-1f2937" alt="Version" /></a><br />
+			<a href="https://drive.google.com/"><img src="https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white" alt="Google Drive" /></a>
+		</td>
+	</tr>
+</table>
 
 </div>
 
