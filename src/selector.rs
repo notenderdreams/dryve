@@ -9,7 +9,7 @@ use crossterm::{
     },
     terminal::{self, ClearType},
 };
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
@@ -82,7 +82,120 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
 
         match event::read()? {
             Event::Key(KeyEvent {
-                code, modifiers, kind, ..
+                code,
+                modifiers,
+                kind,
+                ..
+            }) => {
+                if kind != event::KeyEventKind::Press {
+                    continue;
+                }
+                if modifiers.contains(KeyModifiers::CONTROL)
+                    && matches!(code, KeyCode::Char('c') | KeyCode::Char('d'))
+                {
+                    break None;
+                }
+                match code {
+                    KeyCode::Up | KeyCode::Char('k') if cursor > 0 => {
+                        cursor -= 1;
+                        if cursor < scroll {
+                            scroll = cursor;
+                        }
+                        dirty = true;
+                    }
+                    KeyCode::Down | KeyCode::Char('j') if cursor + 1 < items.len() => {
+                        cursor += 1;
+                        if cursor >= scroll + list_height {
+                            scroll = cursor + 1 - list_height;
+                        }
+                        dirty = true;
+                    }
+                    KeyCode::Char(' ') => {
+                        toggle(&items, cursor, &mut selected);
+                        dirty = true;
+                    }
+                    KeyCode::Char('a') => {
+                        let all: HashSet<PathBuf> = items
+                            .iter()
+                            .filter(|i| matches!(i.node_type, NodeType::File))
+                            .map(|i| i.path.clone())
+                            .collect();
+                        if selected == all {
+                            selected.clear();
+                        } else {
+                            selected = all;
+                        }
+                        dirty = true;
+                    }
+                    KeyCode::Enter => break Some(selected),
+                    KeyCode::Char('q') | KeyCode::Esc => break None,
+                    _ => {}
+                }
+            }
+            Event::Resize(_, _) => {
+                dirty = true;
+            }
+            _ => {}
+        }
+
+        if dirty {
+            draw(&mut out, &items, cursor, scroll, &selected)?;
+        }
+    };
+
+    Ok(result)
+}
+
+/// Variant of `select` that uses per-path kind overrides instead of inheriting
+/// the root's kind for every descendant.
+pub fn select_with_kinds(
+    roots: &[(Node, PathBuf, ItemKind)],
+    kind_map: &HashMap<PathBuf, ItemKind>,
+) -> io::Result<Option<HashSet<PathBuf>>> {
+    let items = build_items_with_kinds(roots, kind_map);
+    if items.is_empty() {
+        return Ok(Some(HashSet::new()));
+    }
+
+    let mut selected: HashSet<PathBuf> = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File))
+        .map(|i| i.path.clone())
+        .collect();
+
+    let mut cursor: usize = 0;
+    let mut scroll: usize = 0;
+
+    let mut out = io::stdout();
+    terminal::enable_raw_mode()?;
+    queue!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
+    out.flush()?;
+
+    struct Guard;
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let mut o = io::stdout();
+            let _ = queue!(o, terminal::LeaveAlternateScreen, cursor::Show);
+            let _ = o.flush();
+            let _ = terminal::disable_raw_mode();
+        }
+    }
+    let _guard = Guard;
+
+    draw(&mut out, &items, cursor, scroll, &selected)?;
+
+    let result = loop {
+        let (_, rows) = terminal::size()?;
+        let list_height = rows.saturating_sub(1) as usize;
+
+        let mut dirty = false;
+
+        match event::read()? {
+            Event::Key(KeyEvent {
+                code,
+                modifiers,
+                kind,
+                ..
             }) => {
                 if kind != event::KeyEventKind::Press {
                     continue;
@@ -152,6 +265,27 @@ fn build_items(roots: &[(Node, PathBuf, ItemKind)]) -> Vec<Item> {
     out
 }
 
+fn build_items_with_kinds(
+    roots: &[(Node, PathBuf, ItemKind)],
+    kind_map: &HashMap<PathBuf, ItemKind>,
+) -> Vec<Item> {
+    let mut out = Vec::new();
+    let n = roots.len();
+    for (i, (node, base, default_kind)) in roots.iter().enumerate() {
+        flatten_with_kinds(
+            node,
+            base,
+            *default_kind,
+            kind_map,
+            0,
+            i + 1 == n,
+            "",
+            &mut out,
+        );
+    }
+    out
+}
+
 fn flatten(
     node: &Node,
     base: &Path,
@@ -178,6 +312,44 @@ fn flatten(
             child,
             &path,
             kind,
+            depth + 1,
+            i + 1 == n,
+            &child_prefix,
+            out,
+        );
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn flatten_with_kinds(
+    node: &Node,
+    base: &Path,
+    default_kind: ItemKind,
+    kind_map: &HashMap<PathBuf, ItemKind>,
+    depth: usize,
+    is_last: bool,
+    prefix: &str,
+    out: &mut Vec<Item>,
+) {
+    let path = base.join(sanitize_name(&node.name));
+    let kind = kind_map.get(&path).copied().unwrap_or(default_kind);
+    out.push(Item {
+        depth,
+        path: path.clone(),
+        name: node.name.clone(),
+        node_type: node.node_type.clone(),
+        kind,
+        is_last,
+        prefix: prefix.to_string(),
+    });
+    let child_prefix = format!("{}{}", prefix, if is_last { "    " } else { "│   " });
+    let n = node.children.len();
+    for (i, child) in node.children.iter().enumerate() {
+        flatten_with_kinds(
+            child,
+            &path,
+            default_kind,
+            kind_map,
             depth + 1,
             i + 1 == n,
             &child_prefix,
