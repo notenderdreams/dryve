@@ -12,6 +12,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](https://www.rust-lang.org/)
 [![Version](https://img.shields.io/badge/version-v0.1.0-1f2937)](#)
 [![Google Drive](https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white)](https://drive.google.com/)
+
 </td>
 </tr>
 </table>
@@ -36,22 +37,30 @@ It builds a local tree, lets you choose what to download in an interactive selec
 
 ## Installation
 
-Build from source:
+Use the installer scripts for your platform:
+
+### Linux / macOS
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.sh | bash
+```
+
+Optional: install a specific version by passing the tag name:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.sh | bash -s v0.1.0
+```
+
+### Windows
+
+```powershell
+irm https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.ps1 | iex
+```
+
+Build from source if you prefer:
 
 ```bash
 cargo build --release
-```
-
-Run directly with Cargo:
-
-```bash
-cargo run -- <command>
-```
-
-Use compiled binary:
-
-```bash
-./target/release/dryve <command>
 ```
 
 ## Commands
