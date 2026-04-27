@@ -1,17 +1,15 @@
 use crate::download::download_tree;
 use crate::drive::fetch_drive;
-use crate::utils::sanitize_name;
+use crate::utils::{confirm_download, sanitize_name};
 use anyhow::Result;
-use colored::Colorize;
 use std::fs;
-use std::io::{self, Write};
 use std::path::Path;
 
 pub fn run(url: &str) -> Result<()> {
     let root = fetch_drive(url)?;
     root.print();
 
-    if !confirm_download()? {
+    if !confirm_download("Start Download")? {
         println!("Download cancelled.");
         return Ok(());
     }
@@ -25,13 +23,3 @@ pub fn run(url: &str) -> Result<()> {
     Ok(())
 }
 
-fn confirm_download() -> Result<bool> {
-    print!("Start download?{}", " [Y/n]:".blue());
-    io::stdout().flush()?;
-
-    let mut input = String::new();
-    io::stdin().read_line(&mut input)?;
-
-    let response = input.trim().to_lowercase();
-    Ok(matches!(response.as_str(), "y" | "yes" | ""))
-}

@@ -1,4 +1,4 @@
-use crate::utils::{Progress, ProgressHandle};
+use crate::progress::{Progress, ProgressHandle};
 use anyhow::Result;
 use rayon::ThreadPoolBuilder;
 use rayon::prelude::*;

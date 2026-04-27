@@ -14,13 +14,13 @@ pub fn run() -> Result<()> {
     }
 
     let content = fs::read_to_string(json_path)?;
-    let root: Node = serde_json::from_str(&content)?;
+    let old_root: Node = serde_json::from_str(&content)?;
     
-    let root_id = root.id.as_deref().context("root node is missing ID")?;
+    let root_id = old_root.id.as_deref().context("root node is missing ID")?;
     
     let new_root = fetch_from_id(root_id)?;
 
-    let diff = Diff::from_nodes(&root, &new_root);
+    let diff = Diff::from_nodes(&old_root, &new_root);
 
     let mut added_tasks = Vec::new();
     for (path, node) in &diff.added {
@@ -43,6 +43,10 @@ pub fn run() -> Result<()> {
         }
     }
 
+    if added_tasks.is_empty() && updated_tasks.is_empty() && removed_tasks.is_empty() {
+        println!("Everything is up to date");
+        return Ok(());
+    }
     println!("Sync Plan:");
     for task in &added_tasks {
         println!("Added: {}", task.path.display());
