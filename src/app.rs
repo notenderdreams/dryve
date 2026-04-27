@@ -11,11 +11,13 @@ pub struct Cli {
 #[derive(Subcommand)]
 pub enum Commands {
     /// Pull content from a drive
+    #[command(visible_alias = "p")]
     Pull {
         /// The URL to pull content from
         url: String,
     },
     /// Synchronize local files with the drive
+    #[command(visible_alias = "s")]
     Sync,
 }
 
