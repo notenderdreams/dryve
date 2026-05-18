@@ -86,15 +86,15 @@ Alias: `s`
 Synchronize local files against remote changes:
 
 ```bash
-dryve sync
+dryve sync [path]
 # alias
-dryve s
+dryve s [path]
 ```
 
 Important:
 
-- `sync` expects `dryve.json` in the current directory.
-- After `pull`, run `sync` from inside the downloaded root folder (the one containing `dryve.json`).
+- `sync` expects `dryve.json` in the specified directory, or the current directory if no path is provided.
+- After `pull`, run `sync` from inside the downloaded root folder, or pass the folder path to the command.
 
 Sync behavior:
 
@@ -111,13 +111,12 @@ dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>"
 # or
 dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 
-# 2) Move into the downloaded root folder (created from Drive folder name)
+# 2) Synchronize later
+# Option A: Move into the folder and sync
 cd "<downloaded-folder>"
-
-# 3) Synchronize later
 dryve sync
-# or
-dryve s
+# Option B: Sync by passing the folder path
+dryve sync "<downloaded-folder>"
 ```
 
 ## Project Layout
