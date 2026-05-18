@@ -22,7 +22,10 @@ pub enum Commands {
     },
     /// Synchronize local files with the drive
     #[command(visible_alias = "s")]
-    Sync,
+    Sync {
+        /// Optional folder path containing dryve.json
+        path: Option<String>,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -33,8 +36,8 @@ pub fn run() -> Result<()> {
         Commands::Pull { url } => {
             crate::cmd_pull::run(url, threads)?;
         }
-        Commands::Sync => {
-            crate::cmd_sync::run(threads)?;
+        Commands::Sync { path } => {
+            crate::cmd_sync::run(threads, path.as_deref())?;
         }
     }
 

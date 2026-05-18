@@ -150,7 +150,11 @@ fn graft_node(tree: &mut Node, tree_path: &Path, target_path: &Path, node: &Node
     }
 }
 
-pub fn run(threads: usize) -> Result<()> {
+pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
+    if let Some(dir) = folder {
+        std::env::set_current_dir(dir).context("Failed to change working directory")?;
+    }
+
     let json_path = Path::new("dryve.json");
 
     if !json_path.exists() {
