@@ -10,7 +10,7 @@
 <td align="center">
 
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-v0.2.0-1f2937)](#)
+[![Version](https://img.shields.io/badge/version-v0.2.1-1f2937)](#)
 [![Google Drive](https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white)](https://drive.google.com/)
 
 </td>
@@ -32,15 +32,19 @@ It fetches a Drive folder tree, lets you select files in an interactive terminal
 
 ## Installation
 
-Use the installer scripts for your platform:
+### Homebrew (macOS / Linux)
 
-### Linux / macOS
+```bash
+brew install notenderdreams/tap/dryve
+```
+
+### Shell script (Linux / macOS)
 
 ```bash
 curl --proto '=https' --tlsv1.2 -LsSf https://github.com/notenderdreams/dryve/releases/latest/download/dryve-installer.sh | sh
 ```
 
-### Windows
+### PowerShell (Windows)
 
 ```powershell
 powershell -ExecutionPolicy ByPass -c "irm https://github.com/notenderdreams/dryve/releases/latest/download/dryve-installer.ps1 | iex"
