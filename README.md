@@ -37,19 +37,13 @@ Use the installer scripts for your platform:
 ### Linux / macOS
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.sh | bash
-```
-
-Optional: install a specific version by passing the tag name:
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.sh | bash -s v0.1.0
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/notenderdreams/dryve/releases/latest/download/dryve-installer.sh | sh
 ```
 
 ### Windows
 
 ```powershell
-irm https://raw.githubusercontent.com/notenderdreams/dryve/main/installer/install.ps1 | iex
+powershell -ExecutionPolicy ByPass -c "irm https://github.com/notenderdreams/dryve/releases/latest/download/dryve-installer.ps1 | iex"
 ```
 
 Build from source if you prefer:
