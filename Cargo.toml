@@ -1,8 +1,10 @@
 [package]
 name = "dryve"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
+description = "Pull, selectively download, and sync shared Google Drive folders from the terminal"
 repository = "https://github.com/notenderdreams/dryve"
+keywords = ["google-drive", "cli", "sync", "download", "tui"]
 
 [dependencies]
 anyhow = "1.0.102"

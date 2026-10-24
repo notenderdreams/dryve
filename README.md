@@ -10,7 +10,7 @@
 <td align="center">
 
 [![Rust](https://img.shields.io/badge/rust-1.85%2B-orange?logo=rust)](https://www.rust-lang.org/)
-[![Version](https://img.shields.io/badge/version-v0.1.0-1f2937)](#)
+[![Version](https://img.shields.io/badge/version-v0.2.0-1f2937)](#)
 [![Google Drive](https://img.shields.io/badge/Google%20Drive-34A853?logo=googledrive&logoColor=white)](https://drive.google.com/)
 
 </td>
