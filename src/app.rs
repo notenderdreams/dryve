@@ -26,6 +26,12 @@ pub enum Commands {
         /// Optional folder path containing dryve.json
         path: Option<String>,
     },
+    /// Open the drive link in browser
+    #[command(visible_alias = "o")]
+    Open {
+        /// Optional folder path containing dryve.json
+        path: Option<String>,
+    },
 }
 
 pub fn run() -> Result<()> {
@@ -38,6 +44,9 @@ pub fn run() -> Result<()> {
         }
         Commands::Sync { path } => {
             crate::cmd_sync::run(threads, path.as_deref())?;
+        }
+        Commands::Open { path } => {
+            crate::cmd_open::run(path.as_deref())?;
         }
     }
 

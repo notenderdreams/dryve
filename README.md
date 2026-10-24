@@ -103,6 +103,23 @@ Sync behavior:
 - Applies only selected changes.
 - Updates `dryve.json` after completion.
 
+### `open`
+
+Alias: `o`
+
+Open the Drive folder in your default web browser:
+
+```bash
+dryve open [path]
+# alias
+dryve o [path]
+```
+
+Important:
+
+- `open` expects `dryve.json` in the specified directory, or the current directory if no path is provided.
+- Extracts the remote folder ID from `dryve.json` and launches the folder link in your browser.
+
 ## Example Workflow
 
 ```bash
@@ -111,7 +128,13 @@ dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>"
 # or
 dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 
-# 2) Synchronize later
+# 2) Open in browser
+cd "<downloaded-folder>"
+dryve open
+# or pass folder path directly
+dryve open "<downloaded-folder>"
+
+# 3) Synchronize later
 # Option A: Move into the folder and sync
 cd "<downloaded-folder>"
 dryve sync
@@ -122,6 +145,7 @@ dryve sync "<downloaded-folder>"
 ## Project Layout
 
 - `src/app.rs`: CLI entry and subcommand routing.
+- `src/cmd_open.rs`: Open command flow + browser launch.
 - `src/cmd_pull.rs`: Pull flow + selector + initial metadata write.
 - `src/cmd_sync.rs`: Diff + selective sync + metadata refresh.
 - `src/drive.rs`: Google Drive folder discovery and recursive traversal.

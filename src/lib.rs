@@ -1,5 +1,6 @@
 pub mod app;
 
+mod cmd_open;
 mod cmd_pull;
 mod cmd_sync;
 mod download;

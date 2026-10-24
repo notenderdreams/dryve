@@ -26,3 +26,27 @@ pub fn sanitize_name(name: &str) -> String {
         .collect();
     sanitized.trim_end_matches(&[' ', '.'][..]).to_string()
 }
+
+pub fn open_in_browser(url: &str) -> anyhow::Result<()> {
+    #[cfg(target_os = "macos")]
+    let mut cmd = std::process::Command::new("open");
+
+    #[cfg(target_os = "windows")]
+    let mut cmd = {
+        let mut c = std::process::Command::new("cmd");
+        c.args(["/C", "start", ""]);
+        c
+    };
+
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let mut cmd = std::process::Command::new("xdg-open");
+
+    let status = cmd.arg(url).status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => {
+            println!("Failed to open browser automatically. Link: {}", url);
+            Ok(())
+        }
+    }
+}
