@@ -39,19 +39,158 @@ enum Check {
 }
 
 pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<PathBuf>>> {
-    let items = build_items(roots);
-    if items.is_empty() {
+    run_selector(roots, None)
+}
+
+/// Variant of `select` that uses per-path kind overrides instead of inheriting
+/// the root's kind for every descendant.
+pub fn select_with_kinds(
+    roots: &[(Node, PathBuf, ItemKind)],
+    kind_map: &HashMap<PathBuf, ItemKind>,
+) -> io::Result<Option<HashSet<PathBuf>>> {
+    run_selector(roots, Some(kind_map))
+}
+
+fn adjust_scroll(cursor: usize, scroll: &mut usize, list_height: usize) {
+    if list_height == 0 {
+        return;
+    }
+    if cursor < *scroll {
+        *scroll = cursor;
+    } else if cursor >= *scroll + list_height {
+        *scroll = cursor + 1 - list_height;
+    }
+}
+
+fn matches_query(path: &str, query: &str) -> bool {
+    let path_lower = path.to_lowercase();
+    let query_lower = query.to_lowercase();
+    let terms: Vec<&str> = query_lower.split_whitespace().collect();
+    if terms.is_empty() {
+        return true;
+    }
+    terms.iter().all(|term| path_lower.contains(term))
+}
+
+fn filter_node(node: &Node, parent_path: &str, query: &str, is_root: bool) -> Option<Node> {
+    let current_path = if parent_path.is_empty() || is_root {
+        node.name.clone()
+    } else {
+        format!("{}/{}", parent_path, node.name)
+    };
+
+    let path_matches = !is_root && matches_query(&current_path, query);
+
+    match node.node_type {
+        NodeType::File => {
+            if path_matches {
+                Some(node.clone())
+            } else {
+                None
+            }
+        }
+        NodeType::Folder => {
+            let filtered_children: Vec<Node> = node
+                .children
+                .iter()
+                .filter_map(|child| filter_node(child, &current_path, query, false))
+                .collect();
+
+            if !filtered_children.is_empty() {
+                let mut filtered = node.clone();
+                filtered.children = filtered_children;
+                Some(filtered)
+            } else if path_matches {
+                Some(node.clone())
+            } else {
+                None
+            }
+        }
+    }
+}
+
+fn filter_roots(
+    roots: &[(Node, PathBuf, ItemKind)],
+    query: &str,
+) -> Vec<(Node, PathBuf, ItemKind)> {
+    if query.trim().is_empty() {
+        return roots.to_vec();
+    }
+    let query_lower = query.to_lowercase();
+    roots
+        .iter()
+        .filter_map(|(node, base, kind)| {
+            filter_node(node, "", &query_lower, true)
+                .map(|filtered| (filtered, base.clone(), *kind))
+        })
+        .collect()
+}
+
+fn rebuild_items(
+    roots: &[(Node, PathBuf, ItemKind)],
+    query: &str,
+    kind_map: Option<&HashMap<PathBuf, ItemKind>>,
+) -> Vec<Item> {
+    if query.trim().is_empty() {
+        if let Some(km) = kind_map {
+            build_items_with_kinds(roots, km)
+        } else {
+            build_items(roots)
+        }
+    } else {
+        let filtered = filter_roots(roots, query);
+        if let Some(km) = kind_map {
+            build_items_with_kinds(&filtered, km)
+        } else {
+            build_items(&filtered)
+        }
+    }
+}
+
+fn toggle_all_visible(items: &[Item], selected: &mut HashSet<PathBuf>) {
+    let visible_files: HashSet<PathBuf> = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File))
+        .map(|i| i.path.clone())
+        .collect();
+    if visible_files.is_empty() {
+        return;
+    }
+    if visible_files.is_subset(selected) {
+        for f in &visible_files {
+            selected.remove(f);
+        }
+    } else {
+        for f in visible_files {
+            selected.insert(f);
+        }
+    }
+}
+
+fn run_selector(
+    roots: &[(Node, PathBuf, ItemKind)],
+    kind_map: Option<&HashMap<PathBuf, ItemKind>>,
+) -> io::Result<Option<HashSet<PathBuf>>> {
+    let all_items = if let Some(km) = kind_map {
+        build_items_with_kinds(roots, km)
+    } else {
+        build_items(roots)
+    };
+    if all_items.is_empty() {
         return Ok(Some(HashSet::new()));
     }
 
-    let mut selected: HashSet<PathBuf> = items
+    let mut selected: HashSet<PathBuf> = all_items
         .iter()
         .filter(|i| matches!(i.node_type, NodeType::File))
         .map(|i| i.path.clone())
         .collect();
 
+    let mut items = all_items;
     let mut cursor: usize = 0;
     let mut scroll: usize = 0;
+    let mut filter_mode = false;
+    let mut query = String::new();
 
     // Setup
     let mut out = io::stdout();
@@ -71,7 +210,7 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
     let _guard = Guard;
 
     // Initial paint.
-    draw(&mut out, &items, cursor, scroll, &selected)?;
+    draw(&mut out, &items, cursor, scroll, &selected, filter_mode, &query)?;
 
     // Event loop
     let result = loop {
@@ -95,41 +234,141 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
                 {
                     break None;
                 }
-                match code {
-                    KeyCode::Up | KeyCode::Char('k') if cursor > 0 => {
-                        cursor -= 1;
-                        if cursor < scroll {
-                            scroll = cursor;
+
+                if filter_mode {
+                    match code {
+                        KeyCode::Esc => {
+                            if !query.is_empty() {
+                                query.clear();
+                                items = rebuild_items(roots, &query, kind_map);
+                                cursor = 0;
+                                scroll = 0;
+                            }
+                            filter_mode = false;
+                            dirty = true;
                         }
-                        dirty = true;
-                    }
-                    KeyCode::Down | KeyCode::Char('j') if cursor + 1 < items.len() => {
-                        cursor += 1;
-                        if cursor >= scroll + list_height {
-                            scroll = cursor + 1 - list_height;
+                        KeyCode::Enter => {
+                            filter_mode = false;
+                            dirty = true;
                         }
-                        dirty = true;
-                    }
-                    KeyCode::Char(' ') => {
-                        toggle(&items, cursor, &mut selected);
-                        dirty = true;
-                    }
-                    KeyCode::Char('a') => {
-                        let all: HashSet<PathBuf> = items
-                            .iter()
-                            .filter(|i| matches!(i.node_type, NodeType::File))
-                            .map(|i| i.path.clone())
-                            .collect();
-                        if selected == all {
-                            selected.clear();
-                        } else {
-                            selected = all;
+                        KeyCode::Backspace => {
+                            query.pop();
+                            items = rebuild_items(roots, &query, kind_map);
+                            if cursor >= items.len() {
+                                cursor = items.len().saturating_sub(1);
+                            }
+                            adjust_scroll(cursor, &mut scroll, list_height);
+                            dirty = true;
                         }
-                        dirty = true;
+                        KeyCode::Tab => {
+                            if !items.is_empty() {
+                                toggle(&items, cursor, &mut selected);
+                                if cursor + 1 < items.len() {
+                                    cursor += 1;
+                                    adjust_scroll(cursor, &mut scroll, list_height);
+                                }
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::BackTab => {
+                            if !items.is_empty() {
+                                toggle(&items, cursor, &mut selected);
+                                if cursor > 0 {
+                                    cursor -= 1;
+                                    adjust_scroll(cursor, &mut scroll, list_height);
+                                }
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Up => {
+                            if cursor > 0 {
+                                cursor -= 1;
+                                adjust_scroll(cursor, &mut scroll, list_height);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Down => {
+                            if cursor + 1 < items.len() {
+                                cursor += 1;
+                                adjust_scroll(cursor, &mut scroll, list_height);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Char('a') if modifiers.contains(KeyModifiers::CONTROL) => {
+                            toggle_all_visible(&items, &mut selected);
+                            dirty = true;
+                        }
+                        KeyCode::Char('j') if modifiers.contains(KeyModifiers::CONTROL) => {
+                            if cursor + 1 < items.len() {
+                                cursor += 1;
+                                adjust_scroll(cursor, &mut scroll, list_height);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Char('k') if modifiers.contains(KeyModifiers::CONTROL) => {
+                            if cursor > 0 {
+                                cursor -= 1;
+                                adjust_scroll(cursor, &mut scroll, list_height);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Char('u') if modifiers.contains(KeyModifiers::CONTROL) => {
+                            query.clear();
+                            items = rebuild_items(roots, &query, kind_map);
+                            cursor = 0;
+                            scroll = 0;
+                            dirty = true;
+                        }
+                        KeyCode::Char(c) => {
+                            query.push(c);
+                            items = rebuild_items(roots, &query, kind_map);
+                            cursor = 0;
+                            scroll = 0;
+                            dirty = true;
+                        }
+                        _ => {}
                     }
-                    KeyCode::Enter => break Some(selected),
-                    KeyCode::Char('q') | KeyCode::Esc => break None,
-                    _ => {}
+                } else {
+                    match code {
+                        KeyCode::Up | KeyCode::Char('k') if cursor > 0 => {
+                            cursor -= 1;
+                            adjust_scroll(cursor, &mut scroll, list_height);
+                            dirty = true;
+                        }
+                        KeyCode::Down | KeyCode::Char('j') if cursor + 1 < items.len() => {
+                            cursor += 1;
+                            adjust_scroll(cursor, &mut scroll, list_height);
+                            dirty = true;
+                        }
+                        KeyCode::Char(' ') => {
+                            if !items.is_empty() {
+                                toggle(&items, cursor, &mut selected);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Char('a') => {
+                            toggle_all_visible(&items, &mut selected);
+                            dirty = true;
+                        }
+                        KeyCode::Char('/') => {
+                            filter_mode = true;
+                            dirty = true;
+                        }
+                        KeyCode::Esc => {
+                            if !query.is_empty() {
+                                query.clear();
+                                items = rebuild_items(roots, &query, kind_map);
+                                cursor = 0;
+                                scroll = 0;
+                                dirty = true;
+                            } else {
+                                break None;
+                            }
+                        }
+                        KeyCode::Enter => break Some(selected),
+                        KeyCode::Char('q') => break None,
+                        _ => {}
+                    }
                 }
             }
             Event::Resize(_, _) => {
@@ -139,117 +378,7 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
         }
 
         if dirty {
-            draw(&mut out, &items, cursor, scroll, &selected)?;
-        }
-    };
-
-    Ok(result)
-}
-
-/// Variant of `select` that uses per-path kind overrides instead of inheriting
-/// the root's kind for every descendant.
-pub fn select_with_kinds(
-    roots: &[(Node, PathBuf, ItemKind)],
-    kind_map: &HashMap<PathBuf, ItemKind>,
-) -> io::Result<Option<HashSet<PathBuf>>> {
-    let items = build_items_with_kinds(roots, kind_map);
-    if items.is_empty() {
-        return Ok(Some(HashSet::new()));
-    }
-
-    let mut selected: HashSet<PathBuf> = items
-        .iter()
-        .filter(|i| matches!(i.node_type, NodeType::File))
-        .map(|i| i.path.clone())
-        .collect();
-
-    let mut cursor: usize = 0;
-    let mut scroll: usize = 0;
-
-    let mut out = io::stdout();
-    terminal::enable_raw_mode()?;
-    queue!(out, terminal::EnterAlternateScreen, cursor::Hide)?;
-    out.flush()?;
-
-    struct Guard;
-    impl Drop for Guard {
-        fn drop(&mut self) {
-            let mut o = io::stdout();
-            let _ = queue!(o, terminal::LeaveAlternateScreen, cursor::Show);
-            let _ = o.flush();
-            let _ = terminal::disable_raw_mode();
-        }
-    }
-    let _guard = Guard;
-
-    draw(&mut out, &items, cursor, scroll, &selected)?;
-
-    let result = loop {
-        let (_, rows) = terminal::size()?;
-        let list_height = rows.saturating_sub(1) as usize;
-
-        let mut dirty = false;
-
-        match event::read()? {
-            Event::Key(KeyEvent {
-                code,
-                modifiers,
-                kind,
-                ..
-            }) => {
-                if kind != event::KeyEventKind::Press {
-                    continue;
-                }
-                if modifiers.contains(KeyModifiers::CONTROL)
-                    && matches!(code, KeyCode::Char('c') | KeyCode::Char('d'))
-                {
-                    break None;
-                }
-                match code {
-                    KeyCode::Up | KeyCode::Char('k') if cursor > 0 => {
-                        cursor -= 1;
-                        if cursor < scroll {
-                            scroll = cursor;
-                        }
-                        dirty = true;
-                    }
-                    KeyCode::Down | KeyCode::Char('j') if cursor + 1 < items.len() => {
-                        cursor += 1;
-                        if cursor >= scroll + list_height {
-                            scroll = cursor + 1 - list_height;
-                        }
-                        dirty = true;
-                    }
-                    KeyCode::Char(' ') => {
-                        toggle(&items, cursor, &mut selected);
-                        dirty = true;
-                    }
-                    KeyCode::Char('a') => {
-                        let all: HashSet<PathBuf> = items
-                            .iter()
-                            .filter(|i| matches!(i.node_type, NodeType::File))
-                            .map(|i| i.path.clone())
-                            .collect();
-                        if selected == all {
-                            selected.clear();
-                        } else {
-                            selected = all;
-                        }
-                        dirty = true;
-                    }
-                    KeyCode::Enter => break Some(selected),
-                    KeyCode::Char('q') | KeyCode::Esc => break None,
-                    _ => {}
-                }
-            }
-            Event::Resize(_, _) => {
-                dirty = true;
-            }
-            _ => {}
-        }
-
-        if dirty {
-            draw(&mut out, &items, cursor, scroll, &selected)?;
+            draw(&mut out, &items, cursor, scroll, &selected, filter_mode, &query)?;
         }
     };
 
@@ -445,6 +574,8 @@ fn draw(
     cursor: usize,
     scroll: usize,
     sel: &HashSet<PathBuf>,
+    filter_mode: bool,
+    query: &str,
 ) -> io::Result<()> {
     let (cols, rows) = terminal::size()?;
     let list_height = rows.saturating_sub(1) as usize;
@@ -557,6 +688,16 @@ fn draw(
         )?;
     }
 
+    if items.is_empty() {
+        queue!(
+            out,
+            cursor::MoveTo(2, 1),
+            SetForegroundColor(Color::DarkGrey),
+            Print("No matching files or folders"),
+            ResetColor,
+        )?;
+    }
+
     // Scroll position (top-right)
     if items.len() > list_height {
         let hint = format!(" {}/{} ", cursor + 1, items.len());
@@ -576,17 +717,45 @@ fn draw(
         .iter()
         .filter(|i| matches!(i.node_type, NodeType::File))
         .count();
+    let visible_selected = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File) && sel.contains(&i.path))
+        .count();
 
-    let left = "  [Space] Toggle  [a] All  [j/k] ↑↓  [Enter] Confirm  [q] Quit";
-    let right = format!("  {}/{} selected  ", sel_count, total_files);
+    let (left, right, bg, fg) = if filter_mode {
+        let prompt = if items.is_empty() && !query.is_empty() {
+            format!(" /{} (no match)", query)
+        } else {
+            format!(" /{}", query)
+        };
+        let controls = "  [Tab] Toggle  [↑↓] Move  [Enter] Done  [Esc] Clear  ".to_string();
+        (prompt, controls, Color::White, Color::Black)
+    } else if !query.is_empty() {
+        let filter_info = format!(
+            "  Filter: \"{}\"  [Space] Toggle  [a] All  [/] Filter  [Esc] Clear  [Enter] Confirm  [q] Quit",
+            query
+        );
+        let stats = format!(
+            "  {}/{} visible ({} total)  ",
+            visible_selected, total_files, sel_count
+        );
+        (filter_info, stats, Color::DarkGrey, Color::Black)
+    } else {
+        let controls =
+            "  [Space] Toggle  [a] All  [/] Filter  [j/k] ↑↓  [Enter] Confirm  [q] Quit"
+                .to_string();
+        let stats = format!("  {}/{} selected  ", sel_count, total_files);
+        (controls, stats, Color::DarkGrey, Color::Black)
+    };
+
     let pad = cols.saturating_sub(left.chars().count() + right.chars().count());
     let bar = trunc(&format!("{}{}{}", left, " ".repeat(pad), right), cols);
 
     queue!(
         out,
         cursor::MoveTo(0, rows - 1),
-        SetBackgroundColor(Color::DarkGrey),
-        SetForegroundColor(Color::Black),
+        SetBackgroundColor(bg),
+        SetForegroundColor(fg),
         SetAttribute(Attribute::Bold),
         Print(bar),
         ResetColor,
@@ -610,4 +779,87 @@ fn trunc(s: &str, max: usize) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_matches_query() {
+        assert!(matches_query("src/selector.rs", "selector"));
+        assert!(matches_query("src/selector.rs", "src rs"));
+        assert!(matches_query("src/selector.rs", "RS SRC"));
+        assert!(!matches_query("src/selector.rs", "main"));
+        assert!(matches_query("src/selector.rs", ""));
+    }
+
+    #[test]
+    fn test_filter_node() {
+        let file1 = Node::new("alpha.txt".to_string(), NodeType::File, None);
+        let file2 = Node::new("beta.txt".to_string(), NodeType::File, None);
+        let mut subfolder = Node::new("sub".to_string(), NodeType::Folder, None);
+        subfolder.children = vec![file1, file2];
+
+        let mut root = Node::new("root".to_string(), NodeType::Folder, None);
+        root.children = vec![subfolder];
+
+        // Searching "alpha" keeps sub/alpha.txt, drops beta.txt
+        let filtered = filter_node(&root, "", "alpha", true).expect("should match");
+        assert_eq!(filtered.children.len(), 1);
+        let sub = &filtered.children[0];
+        assert_eq!(sub.name, "sub");
+        assert_eq!(sub.children.len(), 1);
+        assert_eq!(sub.children[0].name, "alpha.txt");
+
+        // Searching non-existent returns None
+        assert!(filter_node(&root, "", "nonexistent", true).is_none());
+    }
+
+    #[test]
+    fn test_toggle_all_visible() {
+        let items = vec![
+            Item {
+                depth: 0,
+                path: PathBuf::from("a.txt"),
+                name: "a.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+            Item {
+                depth: 0,
+                path: PathBuf::from("b.txt"),
+                name: "b.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+        ];
+
+        let mut selected = HashSet::new();
+        // Toggle when none selected -> selects all
+        toggle_all_visible(&items, &mut selected);
+        assert_eq!(selected.len(), 2);
+
+        // Toggle when all selected -> deselects all
+        toggle_all_visible(&items, &mut selected);
+        assert_eq!(selected.len(), 0);
+    }
+
+    #[test]
+    fn test_adjust_scroll() {
+        let mut scroll = 0;
+        let list_height = 5;
+
+        // Downward jump beyond viewport
+        adjust_scroll(7, &mut scroll, list_height);
+        assert_eq!(scroll, 3); // 7 + 1 - 5 = 3
+
+        // Upward jump above viewport
+        adjust_scroll(1, &mut scroll, list_height);
+        assert_eq!(scroll, 1);
+    }
 }

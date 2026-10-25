@@ -73,7 +73,7 @@ dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 What it does:
 
 - Fetches the remote folder tree recursively.
-- Opens an interactive selector (`j/k` move, `Space` toggle, `a` toggle all, `Enter` confirm).
+- Opens an interactive selector (`j/k` move, `Space` toggle, `a` toggle all, `/` filter, `Tab` toggle in filter, `Esc` clear, `Enter` confirm).
 - Downloads selected files in parallel.
 - Writes metadata to `<root-folder>/dryve.json`.
 
