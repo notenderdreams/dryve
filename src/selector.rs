@@ -276,7 +276,15 @@ fn run_selector(
     let _guard = Guard;
 
     // Initial paint.
-    draw(&mut out, &items, cursor, scroll, &selected, filter_mode, &query)?;
+    draw(
+        &mut out,
+        &items,
+        cursor,
+        scroll,
+        &selected,
+        filter_mode,
+        &query,
+    )?;
 
     // Event loop
     let result = loop {
@@ -430,7 +438,15 @@ fn run_selector(
         }
 
         if dirty {
-            draw(&mut out, &items, cursor, scroll, &selected, filter_mode, &query)?;
+            draw(
+                &mut out,
+                &items,
+                cursor,
+                scroll,
+                &selected,
+                filter_mode,
+                &query,
+            )?;
         }
     };
 
@@ -793,9 +809,8 @@ fn draw(
         );
         (filter_info, stats, Color::DarkGrey, Color::Black)
     } else {
-        let controls =
-            "  [Space] Toggle  [a] All  [/] Filter  [j/k] ↑↓  [Enter] Confirm  [q] Quit"
-                .to_string();
+        let controls = "  [Space] Toggle  [a] All  [/] Filter  [j/k] ↑↓  [Enter] Confirm  [q] Quit"
+            .to_string();
         let stats = format!("  {}/{} selected  ", sel_count, total_files);
         (controls, stats, Color::DarkGrey, Color::Black)
     };
