@@ -206,6 +206,13 @@ fn rebuild_items(
     }
 }
 
+fn first_file_or_first(items: &[Item]) -> usize {
+    items
+        .iter()
+        .position(|i| matches!(i.node_type, NodeType::File))
+        .unwrap_or(0)
+}
+
 fn toggle_all_visible(items: &[Item], selected: &mut HashSet<PathBuf>) {
     let visible_files: HashSet<PathBuf> = items
         .iter()
@@ -313,29 +320,14 @@ fn run_selector(
                         KeyCode::Backspace => {
                             query.pop();
                             items = rebuild_items(roots, &query, kind_map);
-                            if cursor >= items.len() {
-                                cursor = items.len().saturating_sub(1);
-                            }
+                            cursor = first_file_or_first(&items);
+                            scroll = 0;
                             adjust_scroll(cursor, &mut scroll, list_height);
                             dirty = true;
                         }
-                        KeyCode::Tab => {
+                        KeyCode::Tab | KeyCode::BackTab => {
                             if !items.is_empty() {
                                 toggle(&items, cursor, &mut selected);
-                                if cursor + 1 < items.len() {
-                                    cursor += 1;
-                                    adjust_scroll(cursor, &mut scroll, list_height);
-                                }
-                                dirty = true;
-                            }
-                        }
-                        KeyCode::BackTab => {
-                            if !items.is_empty() {
-                                toggle(&items, cursor, &mut selected);
-                                if cursor > 0 {
-                                    cursor -= 1;
-                                    adjust_scroll(cursor, &mut scroll, list_height);
-                                }
                                 dirty = true;
                             }
                         }
@@ -381,8 +373,9 @@ fn run_selector(
                         KeyCode::Char(c) => {
                             query.push(c);
                             items = rebuild_items(roots, &query, kind_map);
-                            cursor = 0;
+                            cursor = first_file_or_first(&items);
                             scroll = 0;
+                            adjust_scroll(cursor, &mut scroll, list_height);
                             dirty = true;
                         }
                         _ => {}
@@ -399,7 +392,7 @@ fn run_selector(
                             adjust_scroll(cursor, &mut scroll, list_height);
                             dirty = true;
                         }
-                        KeyCode::Char(' ') => {
+                        KeyCode::Char(' ') | KeyCode::Tab => {
                             if !items.is_empty() {
                                 toggle(&items, cursor, &mut selected);
                                 dirty = true;
@@ -923,6 +916,36 @@ mod tests {
         // Toggle when all selected -> deselects all
         toggle_all_visible(&items, &mut selected);
         assert_eq!(selected.len(), 0);
+    }
+
+    #[test]
+    fn test_first_file_or_first() {
+        let items = vec![
+            Item {
+                depth: 0,
+                path: PathBuf::from("folder"),
+                name: "folder".to_string(),
+                node_type: NodeType::Folder,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+            Item {
+                depth: 1,
+                path: PathBuf::from("folder/file.txt"),
+                name: "file.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: true,
+                prefix: "    ".to_string(),
+            },
+        ];
+
+        // Should skip folder at index 0 and pick file at index 1
+        assert_eq!(first_file_or_first(&items), 1);
+
+        // Empty items fallback to 0
+        assert_eq!(first_file_or_first(&[]), 0);
     }
 
     #[test]
