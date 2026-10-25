@@ -62,6 +62,65 @@ fn adjust_scroll(cursor: usize, scroll: &mut usize, list_height: usize) {
     }
 }
 
+fn wildcard_match(text: &str, pattern: &str) -> bool {
+    let parts: Vec<&str> = pattern.split('*').collect();
+    if parts.len() == 1 {
+        return text == pattern;
+    }
+
+    let starts_with_star = pattern.starts_with('*');
+    let ends_with_star = pattern.ends_with('*');
+
+    let first = parts[0];
+    let last = parts[parts.len() - 1];
+
+    if !starts_with_star && !text.starts_with(first) {
+        return false;
+    }
+    if !ends_with_star && !text.ends_with(last) {
+        return false;
+    }
+    if !starts_with_star && !ends_with_star && text.len() < first.len() + last.len() {
+        return false;
+    }
+
+    let mut rem = text;
+    if !starts_with_star {
+        rem = &rem[first.len()..];
+    }
+    if !ends_with_star {
+        rem = &rem[..rem.len().saturating_sub(last.len())];
+    }
+
+    let middle = &parts[1..parts.len() - 1];
+    for &part in middle {
+        if part.is_empty() {
+            continue;
+        }
+        match rem.find(part) {
+            Some(idx) => {
+                rem = &rem[idx + part.len()..];
+            }
+            None => return false,
+        }
+    }
+
+    true
+}
+
+fn term_matches(path_lower: &str, term: &str) -> bool {
+    let filename = path_lower.rsplit('/').next().unwrap_or(path_lower);
+    if term.contains('*') {
+        if term.contains('/') {
+            wildcard_match(path_lower, term)
+        } else {
+            wildcard_match(filename, term) || wildcard_match(path_lower, term)
+        }
+    } else {
+        path_lower.contains(term)
+    }
+}
+
 fn matches_query(path: &str, query: &str) -> bool {
     let path_lower = path.to_lowercase();
     let query_lower = query.to_lowercase();
@@ -69,7 +128,7 @@ fn matches_query(path: &str, query: &str) -> bool {
     if terms.is_empty() {
         return true;
     }
-    terms.iter().all(|term| path_lower.contains(term))
+    terms.iter().all(|term| term_matches(&path_lower, term))
 }
 
 fn filter_node(node: &Node, parent_path: &str, query: &str, is_root: bool) -> Option<Node> {
@@ -786,12 +845,29 @@ mod tests {
     use super::*;
 
     #[test]
+    fn test_wildcard_match() {
+        assert!(wildcard_match("document.pdf", "*.pdf"));
+        assert!(wildcard_match("smthing.txt", "smthing.*"));
+        assert!(wildcard_match("my_draft_copy.doc", "*draft*"));
+        assert!(wildcard_match("report_2024_final.pdf", "report*2024*.pdf"));
+        assert!(!wildcard_match("document.txt", "*.pdf"));
+        assert!(!wildcard_match("foo", "foo*foo"));
+        assert!(wildcard_match("anything", "*"));
+    }
+
+    #[test]
     fn test_matches_query() {
         assert!(matches_query("src/selector.rs", "selector"));
         assert!(matches_query("src/selector.rs", "src rs"));
         assert!(matches_query("src/selector.rs", "RS SRC"));
         assert!(!matches_query("src/selector.rs", "main"));
         assert!(matches_query("src/selector.rs", ""));
+
+        // Wildcard support
+        assert!(matches_query("docs/report.pdf", "*.pdf"));
+        assert!(matches_query("docs/smthing.txt", "smthing.*"));
+        assert!(matches_query("docs/smthing.txt", "docs *.txt"));
+        assert!(!matches_query("docs/smthing.txt", "*.pdf"));
     }
 
     #[test]
