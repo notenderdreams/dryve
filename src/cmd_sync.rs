@@ -150,7 +150,14 @@ fn graft_node(tree: &mut Node, tree_path: &Path, target_path: &Path, node: &Node
     }
 }
 
-pub fn run(threads: usize, folder: Option<&str>, include_ignored: bool, yes: bool) -> Result<()> {
+pub fn run(
+    threads: usize,
+    folder: Option<&str>,
+    include_ignored: bool,
+    yes: bool,
+    include: &[String],
+    exclude: &[String],
+) -> Result<()> {
     if let Some(dir) = folder {
         std::env::set_current_dir(dir).context("Failed to change working directory")?;
     }
@@ -192,9 +199,9 @@ pub fn run(threads: usize, folder: Option<&str>, include_ignored: bool, yes: boo
 
     // Show the interactive selector with the structured tree unless -y/--yes specified.
     let selection = if yes {
-        selector::select_all(&roots)
+        selector::select_all(&roots, include, exclude)
     } else {
-        let sel = selector::select_with_kinds(&roots, &kind_map)
+        let sel = selector::select_with_kinds(&roots, &kind_map, include, exclude)
             .map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
         match sel {
             Some(s) => s,

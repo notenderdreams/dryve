@@ -72,12 +72,15 @@ dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 
 # non-interactive (skip tree selector)
 dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>" -y
+
+# filter specific file patterns
+dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>" -y --include "*.pdf" --exclude "*temp*"
 ```
 
 What it does:
 
 - Fetches the remote folder tree recursively.
-- Opens an interactive selector with file sizes and live payload total (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm), or skips it if `-y`/`--yes` is passed.
+- Opens an interactive selector with file sizes and live payload total (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm), or skips it if `-y`/`--yes` is passed. When `--include` / `--exclude` are provided, matching files are pre-selected in the TUI (or directly selected under `-y`).
 - Downloads selected files in parallel (skipping ignored items).
 - Writes metadata to `<root-folder>/dryve.json` (persisting ignored files/folders).
 
@@ -109,6 +112,8 @@ Important:
 Options:
 
 - `-y, --yes`: Non-interactive mode, automatically accept default selection without selector prompt.
+- `--include <PATTERN>`: Only select files matching pattern (repeatable, e.g. `--include "*.pdf"`).
+- `--exclude <PATTERN>`: Exclude files matching pattern (repeatable, e.g. `--exclude "archive/*"`).
 - `-I, --include-ignored`: Include ignored files and folders in the sync selector to review or un-ignore them.
 
 Sync behavior:
@@ -205,7 +210,7 @@ dryve sync "<downloaded-folder>"
 - `src/drive.rs`: Google Drive folder discovery and recursive traversal.
 - `src/parser.rs`: HTML parsing for Drive listing data.
 - `src/download.rs`: Task collection and file download logic.
-- `src/selector.rs`: Interactive TUI selector.
+- `src/selector/`: Interactive TUI selector (event loop, tree model, and terminal renderer).
 - `src/pool.rs`: Parallel task execution and progress integration.
 - `src/node.rs`: Tree model and diff engine.
 

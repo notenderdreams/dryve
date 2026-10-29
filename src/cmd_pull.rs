@@ -6,16 +6,22 @@ use anyhow::Result;
 use std::fs;
 use std::path::Path;
 
-pub fn run(url: &str, threads: usize, yes: bool) -> Result<()> {
+pub fn run(
+    url: &str,
+    threads: usize,
+    yes: bool,
+    include: &[String],
+    exclude: &[String],
+) -> Result<()> {
     let root = fetch_drive(url)?;
     let base = Path::new(".");
     let roots = vec![(root.clone(), base.to_path_buf(), ItemKind::Normal)];
 
     let selection = if yes {
-        selector::select_all(&roots)
+        selector::select_all(&roots, include, exclude)
     } else {
-        let sel =
-            selector::select(&roots).map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
+        let sel = selector::select(&roots, include, exclude)
+            .map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
         match sel {
             Some(s) => s,
             None => {

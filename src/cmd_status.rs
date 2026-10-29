@@ -1,6 +1,6 @@
 use crate::drive::fetch_from_id;
 use crate::node::{Diff, Node, NodeType};
-use crate::utils::fmt_size_compact;
+use crate::utils::{fmt_size_compact, path_passes_filter};
 use anyhow::{Context, Result};
 use colored::Colorize;
 use std::collections::HashSet;
@@ -29,12 +29,7 @@ fn count_files(node: &Node) -> usize {
     }
 }
 
-fn collect_node_changes(
-    node: &Node,
-    path: &Path,
-    kind: ChangeKind,
-    out: &mut Vec<ChangeItem>,
-) {
+fn collect_node_changes(node: &Node, path: &Path, kind: ChangeKind, out: &mut Vec<ChangeItem>) {
     match node.node_type {
         NodeType::File => {
             out.push(ChangeItem {
@@ -83,7 +78,12 @@ pub fn collect_changes(diff: &Diff) -> Vec<ChangeItem> {
     changes
 }
 
-pub fn run(folder: Option<&str>, include_ignored: bool) -> Result<()> {
+pub fn run(
+    folder: Option<&str>,
+    include_ignored: bool,
+    include: &[String],
+    exclude: &[String],
+) -> Result<()> {
     if let Some(dir) = folder {
         std::env::set_current_dir(dir).context("Failed to change working directory")?;
     }
@@ -108,7 +108,11 @@ pub fn run(folder: Option<&str>, include_ignored: bool) -> Result<()> {
     new_root.inherit_ignored(Path::new(""), false, &ignored_ids, &ignored_paths);
 
     let diff = Diff::from_nodes_with_ignored(&old_root, &new_root, include_ignored);
-    let changes = collect_changes(&diff);
+    let all_changes = collect_changes(&diff);
+    let changes: Vec<ChangeItem> = all_changes
+        .into_iter()
+        .filter(|c| path_passes_filter(&c.path, include, exclude))
+        .collect();
 
     let total_files = count_files(&new_root);
     let total_size = new_root.total_size();
@@ -130,10 +134,7 @@ pub fn run(folder: Option<&str>, include_ignored: bool) -> Result<()> {
         items_str,
         fmt_size_compact(total_size)
     );
-    println!(
-        "Remote: https://drive.google.com/drive/folders/{}",
-        root_id
-    );
+    println!("Remote: https://drive.google.com/drive/folders/{}", root_id);
     println!();
 
     if changes.is_empty() {
@@ -215,11 +216,7 @@ pub fn run(folder: Option<&str>, include_ignored: bool) -> Result<()> {
         println!();
         println!("{}", "! Ignored:".bright_black());
         for c in ignored {
-            println!(
-                "    {} {}",
-                c.path.display(),
-                "(skipped)".bright_black()
-            );
+            println!("    {} {}", c.path.display(), "(skipped)".bright_black());
         }
     }
 
@@ -236,22 +233,39 @@ mod tests {
     #[test]
     fn test_collect_changes() {
         let mut diff = Diff::new();
-        let mut added_file = Node::new("new_spec.pdf".to_string(), NodeType::File, Some("id1".into()));
+        let mut added_file = Node::new(
+            "new_spec.pdf".to_string(),
+            NodeType::File,
+            Some("id1".into()),
+        );
         added_file.size = Some(2_500_000);
 
-        let mut ignored_file = Node::new("data.zip".to_string(), NodeType::File, Some("id2".into()));
+        let mut ignored_file =
+            Node::new("data.zip".to_string(), NodeType::File, Some("id2".into()));
         ignored_file.ignored = true;
 
-        diff.added.push((PathBuf::from("docs/new_spec.pdf"), added_file));
-        diff.added.push((PathBuf::from("archive/data.zip"), ignored_file));
+        diff.added
+            .push((PathBuf::from("docs/new_spec.pdf"), added_file));
+        diff.added
+            .push((PathBuf::from("archive/data.zip"), ignored_file));
 
-        let old_file = Node::new("report.docx".to_string(), NodeType::File, Some("old_id".into()));
-        let mut updated_file = Node::new("report.docx".to_string(), NodeType::File, Some("new_id".into()));
+        let old_file = Node::new(
+            "report.docx".to_string(),
+            NodeType::File,
+            Some("old_id".into()),
+        );
+        let mut updated_file = Node::new(
+            "report.docx".to_string(),
+            NodeType::File,
+            Some("new_id".into()),
+        );
         updated_file.size = Some(12_000_000);
-        diff.updated.push((PathBuf::from("report.docx"), old_file, updated_file));
+        diff.updated
+            .push((PathBuf::from("report.docx"), old_file, updated_file));
 
         let removed_file = Node::new("notes.txt".to_string(), NodeType::File, Some("id3".into()));
-        diff.removed.push((PathBuf::from("notes.txt"), removed_file));
+        diff.removed
+            .push((PathBuf::from("notes.txt"), removed_file));
 
         let changes = collect_changes(&diff);
         assert_eq!(changes.len(), 4);

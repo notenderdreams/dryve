@@ -12,6 +12,14 @@ pub struct Cli {
     #[arg(short = 'y', long, global = true)]
     pub yes: bool,
 
+    /// Include files matching pattern (e.g. "*.pdf", "docs/*")
+    #[arg(long, value_name = "PATTERN", global = true)]
+    pub include: Vec<String>,
+
+    /// Exclude files matching pattern (e.g. "*.tmp", "archive/*")
+    #[arg(long, value_name = "PATTERN", global = true)]
+    pub exclude: Vec<String>,
+
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -56,22 +64,31 @@ pub fn run() -> Result<()> {
     let cli = Cli::parse();
     let threads = cli.threads;
     let yes = cli.yes;
+    let include = &cli.include;
+    let exclude = &cli.exclude;
 
     match &cli.command {
         Commands::Pull { url } => {
-            crate::cmd_pull::run(url, threads, yes)?;
+            crate::cmd_pull::run(url, threads, yes, include, exclude)?;
         }
         Commands::Sync {
             path,
             include_ignored,
         } => {
-            crate::cmd_sync::run(threads, path.as_deref(), *include_ignored, yes)?;
+            crate::cmd_sync::run(
+                threads,
+                path.as_deref(),
+                *include_ignored,
+                yes,
+                include,
+                exclude,
+            )?;
         }
         Commands::Status {
             path,
             include_ignored,
         } => {
-            crate::cmd_status::run(path.as_deref(), *include_ignored)?;
+            crate::cmd_status::run(path.as_deref(), *include_ignored, include, exclude)?;
         }
         Commands::Open { path } => {
             crate::cmd_open::run(path.as_deref())?;
@@ -140,5 +157,24 @@ mod tests {
             }
             _ => panic!("expected Status command"),
         }
+    }
+
+    #[test]
+    fn test_cli_include_exclude_flags() {
+        let cli = Cli::try_parse_from([
+            "dryve",
+            "pull",
+            "https://example.com",
+            "--include",
+            "*.pdf",
+            "--include",
+            "docs/*",
+            "--exclude",
+            "*.tmp",
+        ])
+        .unwrap();
+
+        assert_eq!(cli.include, vec!["*.pdf".to_string(), "docs/*".to_string()]);
+        assert_eq!(cli.exclude, vec!["*.tmp".to_string()]);
     }
 }
