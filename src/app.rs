@@ -34,6 +34,16 @@ pub enum Commands {
         #[arg(short = 'I', long)]
         include_ignored: bool,
     },
+    /// Show sync status and pending remote changes
+    #[command(visible_alias = "st")]
+    Status {
+        /// Optional folder path containing dryve.json
+        path: Option<String>,
+
+        /// Include ignored files in status
+        #[arg(short = 'I', long)]
+        include_ignored: bool,
+    },
     /// Open the drive link in browser
     #[command(visible_alias = "o")]
     Open {
@@ -56,6 +66,12 @@ pub fn run() -> Result<()> {
             include_ignored,
         } => {
             crate::cmd_sync::run(threads, path.as_deref(), *include_ignored, yes)?;
+        }
+        Commands::Status {
+            path,
+            include_ignored,
+        } => {
+            crate::cmd_status::run(path.as_deref(), *include_ignored)?;
         }
         Commands::Open { path } => {
             crate::cmd_open::run(path.as_deref())?;
@@ -97,5 +113,32 @@ mod tests {
 
         let cli = Cli::try_parse_from(["dryve", "sync"]).unwrap();
         assert!(!cli.yes);
+    }
+
+    #[test]
+    fn test_cli_status_subcommand() {
+        let cli = Cli::try_parse_from(["dryve", "status"]).unwrap();
+        match cli.command {
+            Commands::Status {
+                path,
+                include_ignored,
+            } => {
+                assert_eq!(path, None);
+                assert!(!include_ignored);
+            }
+            _ => panic!("expected Status command"),
+        }
+
+        let cli = Cli::try_parse_from(["dryve", "st", "my_folder", "-I"]).unwrap();
+        match cli.command {
+            Commands::Status {
+                path,
+                include_ignored,
+            } => {
+                assert_eq!(path, Some("my_folder".to_string()));
+                assert!(include_ignored);
+            }
+            _ => panic!("expected Status command"),
+        }
     }
 }

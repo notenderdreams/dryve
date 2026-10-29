@@ -2,6 +2,7 @@ pub mod app;
 
 mod cmd_open;
 mod cmd_pull;
+mod cmd_status;
 mod cmd_sync;
 mod download;
 mod drive;

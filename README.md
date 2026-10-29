@@ -118,6 +118,44 @@ Sync behavior:
 - Applies only selected changes.
 - Updates `dryve.json` after completion.
 
+### `status`
+
+Alias: `st`
+
+Check sync status and preview remote changes without applying them:
+
+```bash
+dryve status [path]
+# alias
+dryve st [path]
+
+# include ignored files in status check
+dryve status [path] -I
+```
+
+Example output:
+
+```text
+Drive: Project Backup (12 items, 240 MB)
+Remote: https://drive.google.com/drive/folders/<FOLDER_ID>
+
+Changes (3 files, 14.2 MB):
+
++ Added:
+    docs/new_spec.pdf (2.4 MB)
+
+~ Modified:
+    report.docx (11.8 MB)
+
+- Removed:
+    notes.txt
+
+! Ignored:
+    archive/data.zip (skipped)
+
+Use 'dryve sync' to apply changes.
+```
+
 ### `open`
 
 Alias: `o`
@@ -162,6 +200,7 @@ dryve sync "<downloaded-folder>"
 - `src/app.rs`: CLI entry and subcommand routing.
 - `src/cmd_open.rs`: Open command flow + browser launch.
 - `src/cmd_pull.rs`: Pull flow + selector + initial metadata write.
+- `src/cmd_status.rs`: Status command flow + change summary.
 - `src/cmd_sync.rs`: Diff + selective sync + metadata refresh.
 - `src/drive.rs`: Google Drive folder discovery and recursive traversal.
 - `src/parser.rs`: HTML parsing for Drive listing data.
