@@ -50,6 +50,18 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<Selectio
     run_selector(roots, None)
 }
 
+/// Select all non-ignored files without interactive prompt.
+pub fn select_all(roots: &[(Node, PathBuf, ItemKind)]) -> Selection {
+    let all_items = build_items(roots);
+    let ignored = collect_initial_ignored(roots);
+    let selected = all_items
+        .into_iter()
+        .filter(|i| matches!(i.node_type, NodeType::File) && !ignored.contains(&i.path))
+        .map(|i| i.path)
+        .collect();
+    Selection { selected, ignored }
+}
+
 /// Variant of `select` that uses per-path kind overrides instead of inheriting
 /// the root's kind for every descendant.
 pub fn select_with_kinds(
@@ -1371,5 +1383,22 @@ mod tests {
         // Upward jump above viewport
         adjust_scroll(1, &mut scroll, list_height);
         assert_eq!(scroll, 1);
+    }
+
+    #[test]
+    fn test_select_all() {
+        let file1 = Node::new("file1.txt".to_string(), NodeType::File, None);
+        let mut file2 = Node::new("file2.txt".to_string(), NodeType::File, None);
+        file2.ignored = true;
+
+        let mut folder = Node::new("docs".to_string(), NodeType::Folder, None);
+        folder.children = vec![file1, file2];
+
+        let roots = vec![(folder, PathBuf::new(), ItemKind::Normal)];
+        let selection = select_all(&roots);
+
+        assert!(selection.selected.contains(&PathBuf::from("docs/file1.txt")));
+        assert!(!selection.selected.contains(&PathBuf::from("docs/file2.txt")));
+        assert!(selection.ignored.contains(&PathBuf::from("docs/file2.txt")));
     }
 }

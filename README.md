@@ -69,12 +69,15 @@ Pull and download from a Google Drive folder URL:
 dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>"
 # alias
 dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
+
+# non-interactive (skip tree selector)
+dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>" -y
 ```
 
 What it does:
 
 - Fetches the remote folder tree recursively.
-- Opens an interactive selector with file sizes and live payload total (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm).
+- Opens an interactive selector with file sizes and live payload total (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm), or skips it if `-y`/`--yes` is passed.
 - Downloads selected files in parallel (skipping ignored items).
 - Writes metadata to `<root-folder>/dryve.json` (persisting ignored files/folders).
 
@@ -93,6 +96,9 @@ dryve s [path]
 dryve sync [path] --include-ignored
 # or short flag
 dryve s [path] -I
+
+# non-interactive (skip tree selector)
+dryve sync [path] -y
 ```
 
 Important:
@@ -102,6 +108,7 @@ Important:
 
 Options:
 
+- `-y, --yes`: Non-interactive mode, automatically accept default selection without selector prompt.
 - `-I, --include-ignored`: Include ignored files and folders in the sync selector to review or un-ignore them.
 
 Sync behavior:
