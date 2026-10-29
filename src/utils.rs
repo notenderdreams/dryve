@@ -19,6 +19,25 @@ pub fn fmt_size(bytes: u64) -> String {
     format!("{:.2} {}", val, units[i])
 }
 
+pub fn fmt_size_compact(bytes: u64) -> String {
+    let units = ["B", "KB", "MB", "GB", "TB"];
+    let mut i = 0;
+    let mut val = bytes as f64;
+    while val >= 1024.0 && i < units.len() - 1 {
+        val /= 1024.0;
+        i += 1;
+    }
+    if i == 0 {
+        format!("{} B", bytes)
+    } else {
+        format!("{:.1} {}", val, units[i])
+    }
+}
+
+pub fn fmt_size_badge(bytes: u64) -> String {
+    format!("[ {:>7} ]", fmt_size_compact(bytes))
+}
+
 pub fn sanitize_name(name: &str) -> String {
     let sanitized: String = name
         .chars()
@@ -48,5 +67,18 @@ pub fn open_in_browser(url: &str) -> anyhow::Result<()> {
             println!("Failed to open browser automatically. Link: {}", url);
             Ok(())
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fmt_size_badge() {
+        assert_eq!(fmt_size_badge(512), "[   512 B ]");
+        assert_eq!(fmt_size_badge(2_516_582), "[  2.4 MB ]");
+        assert_eq!(fmt_size_badge(1_288_490_188), "[  1.2 GB ]");
+        assert_eq!(fmt_size_badge(9_126_805_504), "[  8.5 GB ]");
     }
 }

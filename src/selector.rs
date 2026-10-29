@@ -26,6 +26,7 @@ struct Item {
     path: PathBuf,
     name: String,
     node_type: NodeType,
+    size: Option<u64>,
     kind: ItemKind,
     is_last: bool,
     prefix: String,
@@ -593,6 +594,7 @@ fn flatten(
         path: path.clone(),
         name: node.name.clone(),
         node_type: node.node_type.clone(),
+        size: node.size,
         kind,
         is_last,
         prefix: prefix.to_string(),
@@ -630,6 +632,7 @@ fn flatten_with_kinds(
         path: path.clone(),
         name: node.name.clone(),
         node_type: node.node_type.clone(),
+        size: node.size,
         kind,
         is_last,
         prefix: prefix.to_string(),
@@ -790,6 +793,15 @@ fn draw(
     let list_height = rows.saturating_sub(1) as usize;
     let cols = cols as usize;
 
+    let max_lead_len = items
+        .iter()
+        .filter(|i| i.size.is_some())
+        .map(|i| i.prefix.chars().count() + 4 + i.name.chars().count())
+        .max()
+        .unwrap_or(20);
+    let max_target = cols.saturating_sub(25).max(20);
+    let target_col = (max_lead_len + 3).min(max_target);
+
     // Item rows
     let visible_count = items.len().saturating_sub(scroll).min(list_height);
     for (row, (i, item)) in items
@@ -879,22 +891,49 @@ fn draw(
             queue!(out, SetAttribute(Attribute::Bold))?;
         }
 
-        let display_name = if state == Check::Ignored {
-            format!("{} (ignored)", item.name)
-        } else {
-            item.name.clone()
-        };
-
-        // Fixed chars used so far: 2 (marker) + 3 (checkbox) + 1 (sp)
-        //   + prefix.len() + connector.len() = overhead
         let overhead = 2 + 3 + 1 + item.prefix.chars().count() + connector.chars().count();
-        let name = trunc(&display_name, cols.saturating_sub(overhead));
-        queue!(
-            out,
-            Print(name),
-            ResetColor,
-            terminal::Clear(ClearType::UntilNewLine),
-        )?;
+        let lead_len =
+            item.prefix.chars().count() + connector.chars().count() + item.name.chars().count();
+
+        let has_room_for_badge = cols.saturating_sub(overhead) >= 15;
+        if let Some(bytes) = item.size.filter(|_| has_room_for_badge) {
+            let pad_len = if target_col > lead_len {
+                target_col - lead_len
+            } else {
+                1
+            };
+            let badge_overhead = pad_len + 11 + if state == Check::Ignored { 10 } else { 0 };
+            let max_name_len = cols.saturating_sub(overhead + badge_overhead);
+            let name = trunc(&item.name, max_name_len);
+
+            queue!(out, Print(name), ResetColor)?;
+            queue!(out, Print(" ".repeat(pad_len)))?;
+
+            queue!(
+                out,
+                SetForegroundColor(Color::DarkGrey),
+                Print(crate::utils::fmt_size_badge(bytes)),
+                ResetColor,
+            )?;
+
+            if state == Check::Ignored {
+                queue!(
+                    out,
+                    SetForegroundColor(Color::DarkGrey),
+                    Print(" (ignored)"),
+                    ResetColor,
+                )?;
+            }
+        } else {
+            let display_name = if state == Check::Ignored {
+                format!("{} (ignored)", item.name)
+            } else {
+                item.name.clone()
+            };
+            let name = trunc(&display_name, cols.saturating_sub(overhead));
+            queue!(out, Print(name), ResetColor)?;
+        }
+        queue!(out, terminal::Clear(ClearType::UntilNewLine))?;
     }
 
     // Clear any leftover rows below the visible items (but above the status bar)
@@ -944,6 +983,27 @@ fn draw(
         .filter(|i| matches!(i.node_type, NodeType::File) && sel.contains(&i.path))
         .count();
 
+    let total_bytes: u64 = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File))
+        .filter_map(|i| i.size)
+        .sum();
+    let sel_bytes: u64 = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File) && sel.contains(&i.path))
+        .filter_map(|i| i.size)
+        .sum();
+
+    let payload_str = if total_bytes > 0 {
+        format!(
+            " ({} / {})",
+            crate::utils::fmt_size_compact(sel_bytes),
+            crate::utils::fmt_size_compact(total_bytes)
+        )
+    } else {
+        String::new()
+    };
+
     let (left, right, bg, fg) = if filter_mode {
         let prompt = if items.is_empty() && !query.is_empty() {
             format!(" /{} (no match)", query)
@@ -959,13 +1019,13 @@ fn draw(
         );
         let stats = if ign_count > 0 {
             format!(
-                "  {}/{} visible ({} total, {} ignored)  ",
-                visible_selected, total_files, sel_count, ign_count
+                "  {}/{} visible{} ({} total, {} ignored)  ",
+                visible_selected, total_files, payload_str, sel_count, ign_count
             )
         } else {
             format!(
-                "  {}/{} visible ({} total)  ",
-                visible_selected, total_files, sel_count
+                "  {}/{} visible{} ({} total)  ",
+                visible_selected, total_files, payload_str, sel_count
             )
         };
         (filter_info, stats, Color::DarkGrey, Color::Black)
@@ -974,17 +1034,24 @@ fn draw(
             .to_string();
         let stats = if ign_count > 0 {
             format!(
-                "  {}/{} selected ({} ignored)  ",
-                sel_count, total_files, ign_count
+                "  {}/{} selected{} ({} ignored)  ",
+                sel_count, total_files, payload_str, ign_count
             )
         } else {
-            format!("  {}/{} selected  ", sel_count, total_files)
+            format!("  {}/{} selected{}  ", sel_count, total_files, payload_str)
         };
         (controls, stats, Color::DarkGrey, Color::Black)
     };
 
-    let pad = cols.saturating_sub(left.chars().count() + right.chars().count());
-    let bar = trunc(&format!("{}{}{}", left, " ".repeat(pad), right), cols);
+    let right_len = right.chars().count();
+    let bar = if cols >= right_len {
+        let max_left = cols - right_len;
+        let left_truncated = trunc(&left, max_left);
+        let pad = cols.saturating_sub(left_truncated.chars().count() + right_len);
+        format!("{}{}{}", left_truncated, " ".repeat(pad), right)
+    } else {
+        trunc(&right, cols)
+    };
 
     queue!(
         out,
@@ -1076,6 +1143,7 @@ mod tests {
                 path: PathBuf::from("a.txt"),
                 name: "a.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(1024),
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1085,6 +1153,7 @@ mod tests {
                 path: PathBuf::from("b.txt"),
                 name: "b.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(2048),
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1110,6 +1179,7 @@ mod tests {
                 path: PathBuf::from("a.txt"),
                 name: "a.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(1024),
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1119,6 +1189,7 @@ mod tests {
                 path: PathBuf::from("b.txt"),
                 name: "b.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(2048),
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1144,6 +1215,7 @@ mod tests {
                 path: PathBuf::from("folder"),
                 name: "folder".to_string(),
                 node_type: NodeType::Folder,
+                size: None,
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1153,6 +1225,7 @@ mod tests {
                 path: PathBuf::from("folder/file.txt"),
                 name: "file.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(512),
                 kind: ItemKind::Normal,
                 is_last: true,
                 prefix: "    ".to_string(),
@@ -1183,6 +1256,7 @@ mod tests {
                 path: PathBuf::from("folder"),
                 name: "folder".to_string(),
                 node_type: NodeType::Folder,
+                size: None,
                 kind: ItemKind::Normal,
                 is_last: false,
                 prefix: String::new(),
@@ -1192,6 +1266,7 @@ mod tests {
                 path: PathBuf::from("folder/file.txt"),
                 name: "file.txt".to_string(),
                 node_type: NodeType::File,
+                size: Some(512),
                 kind: ItemKind::Normal,
                 is_last: true,
                 prefix: "    ".to_string(),
@@ -1203,6 +1278,67 @@ mod tests {
 
         // Empty items fallback to 0
         assert_eq!(first_file_or_first(&[]), 0);
+    }
+
+    #[test]
+    fn test_flatten_preserves_size() {
+        let mut file = Node::new("report.pdf".to_string(), NodeType::File, None);
+        file.size = Some(2_516_582);
+
+        let mut folder = Node::new("docs".to_string(), NodeType::Folder, None);
+        folder.children = vec![file];
+
+        let roots = vec![(folder, PathBuf::new(), ItemKind::Normal)];
+        let items = build_items(&roots);
+
+        assert_eq!(items.len(), 2);
+        assert_eq!(items[0].node_type, NodeType::Folder);
+        assert_eq!(items[0].size, None);
+        assert_eq!(items[1].node_type, NodeType::File);
+        assert_eq!(items[1].size, Some(2_516_582));
+    }
+
+    #[test]
+    fn test_payload_size_calculation() {
+        let items = [
+            Item {
+                depth: 0,
+                path: PathBuf::from("report.pdf"),
+                name: "report.pdf".to_string(),
+                node_type: NodeType::File,
+                size: Some(2_500_000), // ~2.4 MB
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+            Item {
+                depth: 0,
+                path: PathBuf::from("video.mp4"),
+                name: "video.mp4".to_string(),
+                node_type: NodeType::File,
+                size: Some(1_200_000_000), // ~1.1 GB
+                kind: ItemKind::Normal,
+                is_last: true,
+                prefix: String::new(),
+            },
+        ];
+
+        let mut sel = HashSet::new();
+        sel.insert(PathBuf::from("report.pdf"));
+
+        let total_bytes: u64 = items
+            .iter()
+            .filter(|i| matches!(i.node_type, NodeType::File))
+            .filter_map(|i| i.size)
+            .sum();
+        let sel_bytes: u64 = items
+            .iter()
+            .filter(|i| matches!(i.node_type, NodeType::File) && sel.contains(&i.path))
+            .filter_map(|i| i.size)
+            .sum();
+
+        assert_eq!(total_bytes, 1_202_500_000);
+        assert_eq!(sel_bytes, 2_500_000);
     }
 
     #[test]

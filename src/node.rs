@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NodeType {
     Folder,
     File,
@@ -16,6 +16,8 @@ pub struct Node {
     pub children: Vec<Node>,
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub ignored: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size: Option<u64>,
 }
 
 impl Node {
@@ -26,6 +28,15 @@ impl Node {
             id,
             children: Vec::new(),
             ignored: false,
+            size: None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn total_size(&self) -> u64 {
+        match self.node_type {
+            NodeType::File => self.size.unwrap_or(0),
+            NodeType::Folder => self.children.iter().map(|c| c.total_size()).sum(),
         }
     }
 
@@ -397,16 +408,33 @@ mod tests {
     fn test_node_serde_roundtrip() {
         let mut node = Node::new("file.txt".to_string(), NodeType::File, Some("123".into()));
         node.ignored = true;
+        node.size = Some(1048576);
 
         let json = serde_json::to_string(&node).unwrap();
         assert!(json.contains("\"ignored\":true"));
+        assert!(json.contains("\"size\":1048576"));
 
         let deserialized: Node = serde_json::from_str(&json).unwrap();
         assert!(deserialized.ignored);
+        assert_eq!(deserialized.size, Some(1048576));
 
-        // Older dryve.json without "ignored" field defaults to false
+        // Older dryve.json without "ignored" or "size" field defaults to false/None
         let legacy_json = r#"{"name":"legacy.txt","node_type":"File","id":"456","children":[]}"#;
         let legacy_node: Node = serde_json::from_str(legacy_json).unwrap();
         assert!(!legacy_node.ignored);
+        assert_eq!(legacy_node.size, None);
+    }
+
+    #[test]
+    fn test_node_total_size() {
+        let mut file1 = Node::new("a.txt".to_string(), NodeType::File, None);
+        file1.size = Some(100);
+        let mut file2 = Node::new("b.txt".to_string(), NodeType::File, None);
+        file2.size = Some(250);
+
+        let mut folder = Node::new("dir".to_string(), NodeType::Folder, None);
+        folder.children = vec![file1, file2];
+
+        assert_eq!(folder.total_size(), 350);
     }
 }
