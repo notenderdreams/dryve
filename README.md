@@ -88,6 +88,11 @@ Synchronize local files against remote changes:
 dryve sync [path]
 # alias
 dryve s [path]
+
+# include ignored files in sync
+dryve sync [path] --include-ignored
+# or short flag
+dryve s [path] -I
 ```
 
 Important:
@@ -95,10 +100,14 @@ Important:
 - `sync` expects `dryve.json` in the specified directory, or the current directory if no path is provided.
 - After `pull`, run `sync` from inside the downloaded root folder, or pass the folder path to the command.
 
+Options:
+
+- `-I, --include-ignored`: Include ignored files and folders in the sync selector to review or un-ignore them.
+
 Sync behavior:
 
 - Compares old metadata with the current remote tree.
-- Lists only changed items (added/modified/removed) in the selector.
+- Lists only changed items (added/modified/removed) in the selector (ignoring items marked with `[I]` unless `-I` / `--include-ignored` is provided).
 - Applies only selected changes.
 - Updates `dryve.json` after completion.
 

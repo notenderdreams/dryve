@@ -165,23 +165,52 @@ impl Diff {
             updated: Vec::new(),
         }
     }
+    #[allow(dead_code)]
     pub fn from_nodes(old: &Node, new: &Node) -> Self {
+        Self::from_nodes_with_ignored(old, new, false)
+    }
+    pub fn from_nodes_with_ignored(old: &Node, new: &Node, include_ignored: bool) -> Self {
         let mut diff = Diff::new();
-        diff_recursive(old, new, &PathBuf::new(), &mut diff);
+        diff_recursive(old, new, &PathBuf::new(), &mut diff, include_ignored);
         diff
     }
 }
 
-fn diff_recursive(old: &Node, new: &Node, current_path: &Path, diff: &mut Diff) {
+fn diff_recursive(
+    old: &Node,
+    new: &Node,
+    current_path: &Path,
+    diff: &mut Diff,
+    include_ignored: bool,
+) {
     let mut old_map: HashMap<&str, &Node> =
         old.children.iter().map(|n| (n.name.as_str(), n)).collect();
 
     for new_child in new.children.iter() {
         let child_path = current_path.join(crate::utils::sanitize_name(&new_child.name));
 
-        // Skip ignored new items from diff
         if new_child.ignored {
-            old_map.remove(new_child.name.as_str());
+            if !include_ignored {
+                old_map.remove(new_child.name.as_str());
+                continue;
+            }
+
+            // When include_ignored is true, include ignored items in the diff
+            let old_child_opt = old_map.remove(new_child.name.as_str());
+            if matches!(new_child.node_type, NodeType::Folder) {
+                if let Some(old_child) = old_child_opt {
+                    diff_recursive(old_child, new_child, &child_path, diff, include_ignored);
+                } else {
+                    let empty_old = Node::new(
+                        new_child.name.clone(),
+                        NodeType::Folder,
+                        new_child.id.clone(),
+                    );
+                    diff_recursive(&empty_old, new_child, &child_path, diff, include_ignored);
+                }
+            } else {
+                diff.added.push((child_path, new_child.clone()));
+            }
             continue;
         }
 
@@ -205,7 +234,7 @@ fn diff_recursive(old: &Node, new: &Node, current_path: &Path, diff: &mut Diff) 
                     }
                 }
                 (NodeType::Folder, NodeType::Folder) => {
-                    diff_recursive(old_child, new_child, &child_path, diff);
+                    diff_recursive(old_child, new_child, &child_path, diff, include_ignored);
                 }
                 _ => {
                     // Node type changed (e.g. folder -> file)
@@ -219,11 +248,13 @@ fn diff_recursive(old: &Node, new: &Node, current_path: &Path, diff: &mut Diff) 
     }
 
     for (_, old_child) in old_map.into_iter() {
-        // Ignored old items were not downloaded, so skipping deletion if removed on remote
-        if old_child.ignored {
+        if old_child.ignored && !include_ignored {
             continue;
         }
         let child_path = current_path.join(crate::utils::sanitize_name(&old_child.name));
+        if old_child.ignored && !child_path.exists() {
+            continue;
+        }
         diff.removed.push((child_path, old_child.clone()));
     }
 }
@@ -237,7 +268,11 @@ mod tests {
         let old = Node::new("root".to_string(), NodeType::Folder, None);
         let mut new = Node::new("root".to_string(), NodeType::Folder, None);
 
-        let mut ignored_file = Node::new("ignored.txt".to_string(), NodeType::File, Some("id1".into()));
+        let mut ignored_file = Node::new(
+            "ignored.txt".to_string(),
+            NodeType::File,
+            Some("id1".into()),
+        );
         ignored_file.ignored = true;
 
         let normal_file = Node::new("normal.txt".to_string(), NodeType::File, Some("id2".into()));
@@ -252,14 +287,46 @@ mod tests {
     }
 
     #[test]
+    fn test_diff_include_ignored() {
+        let old = Node::new("root".to_string(), NodeType::Folder, None);
+        let mut new = Node::new("root".to_string(), NodeType::Folder, None);
+
+        let mut ignored_file = Node::new(
+            "ignored.txt".to_string(),
+            NodeType::File,
+            Some("id1".into()),
+        );
+        ignored_file.ignored = true;
+
+        new.children.push(ignored_file);
+
+        // When include_ignored is false: skipped
+        let diff_without = Diff::from_nodes_with_ignored(&old, &new, false);
+        assert_eq!(diff_without.added.len(), 0);
+
+        // When include_ignored is true: included
+        let diff_with = Diff::from_nodes_with_ignored(&old, &new, true);
+        assert_eq!(diff_with.added.len(), 1);
+        assert_eq!(diff_with.added[0].1.name, "ignored.txt");
+    }
+
+    #[test]
     fn test_inherit_ignored() {
         let mut old = Node::new("root".to_string(), NodeType::Folder, None);
-        let mut old_child = Node::new("movie.mkv".to_string(), NodeType::File, Some("movie_id".into()));
+        let mut old_child = Node::new(
+            "movie.mkv".to_string(),
+            NodeType::File,
+            Some("movie_id".into()),
+        );
         old_child.ignored = true;
         old.children.push(old_child);
 
         let mut new = Node::new("root".to_string(), NodeType::Folder, None);
-        let new_child = Node::new("movie.mkv".to_string(), NodeType::File, Some("movie_id".into()));
+        let new_child = Node::new(
+            "movie.mkv".to_string(),
+            NodeType::File,
+            Some("movie_id".into()),
+        );
         new.children.push(new_child);
 
         let mut ids = HashSet::new();
@@ -273,7 +340,8 @@ mod tests {
     #[test]
     fn test_apply_selector_changes_preserves_unshown_ignored() {
         let mut root = Node::new("root".to_string(), NodeType::Folder, None);
-        let mut unshown_ignored = Node::new("already_ignored.mp4".to_string(), NodeType::File, None);
+        let mut unshown_ignored =
+            Node::new("already_ignored.mp4".to_string(), NodeType::File, None);
         unshown_ignored.ignored = true;
         let newly_changed = Node::new("new_file.txt".to_string(), NodeType::File, None);
 
@@ -305,9 +373,14 @@ mod tests {
     #[test]
     fn test_prune_missing_preserves_ignored_nodes() {
         let mut root = Node::new("root".to_string(), NodeType::Folder, None);
-        let mut ignored_file = Node::new("non_existent_ignored.bin".to_string(), NodeType::File, None);
+        let mut ignored_file =
+            Node::new("non_existent_ignored.bin".to_string(), NodeType::File, None);
         ignored_file.ignored = true;
-        let missing_file = Node::new("non_existent_unignored.bin".to_string(), NodeType::File, None);
+        let missing_file = Node::new(
+            "non_existent_unignored.bin".to_string(),
+            NodeType::File,
+            None,
+        );
 
         root.children.push(ignored_file);
         root.children.push(missing_file);

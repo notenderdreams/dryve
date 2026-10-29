@@ -150,7 +150,7 @@ fn graft_node(tree: &mut Node, tree_path: &Path, target_path: &Path, node: &Node
     }
 }
 
-pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
+pub fn run(threads: usize, folder: Option<&str>, include_ignored: bool) -> Result<()> {
     if let Some(dir) = folder {
         std::env::set_current_dir(dir).context("Failed to change working directory")?;
     }
@@ -175,7 +175,7 @@ pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
     old_root.collect_ignored(Path::new(""), &mut ignored_ids, &mut ignored_paths);
     new_root.inherit_ignored(Path::new(""), false, &ignored_ids, &ignored_paths);
 
-    let diff = Diff::from_nodes(&old_root, &new_root);
+    let diff = Diff::from_nodes_with_ignored(&old_root, &new_root, include_ignored);
 
     let roots = build_sync_roots(&new_root, &diff);
 

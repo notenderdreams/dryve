@@ -25,6 +25,10 @@ pub enum Commands {
     Sync {
         /// Optional folder path containing dryve.json
         path: Option<String>,
+
+        /// Include ignored files in sync
+        #[arg(short = 'I', long)]
+        include_ignored: bool,
     },
     /// Open the drive link in browser
     #[command(visible_alias = "o")]
@@ -42,8 +46,11 @@ pub fn run() -> Result<()> {
         Commands::Pull { url } => {
             crate::cmd_pull::run(url, threads)?;
         }
-        Commands::Sync { path } => {
-            crate::cmd_sync::run(threads, path.as_deref())?;
+        Commands::Sync {
+            path,
+            include_ignored,
+        } => {
+            crate::cmd_sync::run(threads, path.as_deref(), *include_ignored)?;
         }
         Commands::Open { path } => {
             crate::cmd_open::run(path.as_deref())?;
