@@ -14,7 +14,7 @@ pub fn run(url: &str, threads: usize) -> Result<()> {
     let selection =
         selector::select(&roots).map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
 
-    let selected = match selection {
+    let selection = match selection {
         Some(s) => s,
         None => {
             println!("Download cancelled.");
@@ -22,17 +22,25 @@ pub fn run(url: &str, threads: usize) -> Result<()> {
         }
     };
 
-    if selected.is_empty() {
+    if selection.selected.is_empty() && selection.ignored.is_empty() {
         println!("Nothing selected.");
         return Ok(());
     }
 
-    download_tree(&root, base, threads, &selected)?;
+    if !selection.selected.is_empty() {
+        download_tree(&root, base, threads, &selection.selected)?;
+    } else {
+        println!("No files selected for download.");
+    }
 
     let mut root = root;
+    root.apply_ignored(base, &selection.ignored);
     root.prune_missing(base);
 
     let json_path = base.join(sanitize_name(&root.name)).join("dryve.json");
+    if let Some(parent) = json_path.parent() {
+        fs::create_dir_all(parent)?;
+    }
     let json = serde_json::to_string_pretty(&root)?;
     fs::write(json_path, json)?;
 

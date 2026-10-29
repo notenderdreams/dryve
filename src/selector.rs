@@ -36,9 +36,16 @@ enum Check {
     Full,
     None,
     Partial,
+    Ignored,
 }
 
-pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<PathBuf>>> {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct Selection {
+    pub selected: HashSet<PathBuf>,
+    pub ignored: HashSet<PathBuf>,
+}
+
+pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<Selection>> {
     run_selector(roots, None)
 }
 
@@ -47,7 +54,7 @@ pub fn select(roots: &[(Node, PathBuf, ItemKind)]) -> io::Result<Option<HashSet<
 pub fn select_with_kinds(
     roots: &[(Node, PathBuf, ItemKind)],
     kind_map: &HashMap<PathBuf, ItemKind>,
-) -> io::Result<Option<HashSet<PathBuf>>> {
+) -> io::Result<Option<Selection>> {
     run_selector(roots, Some(kind_map))
 }
 
@@ -213,22 +220,100 @@ fn first_file_or_first(items: &[Item]) -> usize {
         .unwrap_or(0)
 }
 
-fn toggle_all_visible(items: &[Item], selected: &mut HashSet<PathBuf>) {
-    let visible_files: HashSet<PathBuf> = items
+fn toggle_all_visible(items: &[Item], selected: &mut HashSet<PathBuf>, ignored: &HashSet<PathBuf>) {
+    let active_visible_files: HashSet<PathBuf> = items
         .iter()
-        .filter(|i| matches!(i.node_type, NodeType::File))
+        .filter(|i| matches!(i.node_type, NodeType::File) && !ignored.contains(&i.path))
         .map(|i| i.path.clone())
         .collect();
-    if visible_files.is_empty() {
+    if active_visible_files.is_empty() {
         return;
     }
-    if visible_files.is_subset(selected) {
-        for f in &visible_files {
+    if active_visible_files.is_subset(selected) {
+        for f in &active_visible_files {
             selected.remove(f);
         }
     } else {
-        for f in visible_files {
+        for f in active_visible_files {
             selected.insert(f);
+        }
+    }
+}
+
+fn collect_initial_ignored(roots: &[(Node, PathBuf, ItemKind)]) -> HashSet<PathBuf> {
+    let mut ignored = HashSet::new();
+    for (node, base, _) in roots {
+        collect_node_ignored(node, base, false, &mut ignored);
+    }
+    ignored
+}
+
+fn collect_node_ignored(
+    node: &Node,
+    base: &Path,
+    parent_ignored: bool,
+    out: &mut HashSet<PathBuf>,
+) {
+    let path = base.join(crate::utils::sanitize_name(&node.name));
+    let is_ignored = parent_ignored || node.ignored;
+    if is_ignored {
+        out.insert(path.clone());
+    }
+    for child in &node.children {
+        collect_node_ignored(child, &path, is_ignored, out);
+    }
+}
+
+fn is_item_ignored(items: &[Item], idx: usize, ignored: &HashSet<PathBuf>) -> bool {
+    let path = &items[idx].path;
+    if ignored.contains(path) {
+        return true;
+    }
+    let kids = descendants(items, idx);
+    let files: Vec<usize> = kids
+        .into_iter()
+        .filter(|&ci| matches!(items[ci].node_type, NodeType::File))
+        .collect();
+
+    if files.is_empty() {
+        false
+    } else {
+        files.iter().all(|&ci| ignored.contains(&items[ci].path))
+    }
+}
+
+fn toggle_ignore(
+    items: &[Item],
+    idx: usize,
+    selected: &mut HashSet<PathBuf>,
+    ignored: &mut HashSet<PathBuf>,
+) {
+    let is_ign = is_item_ignored(items, idx, ignored);
+    let kids = descendants(items, idx);
+
+    if kids.is_empty() {
+        let path = &items[idx].path;
+        if is_ign {
+            ignored.remove(path);
+        } else {
+            ignored.insert(path.clone());
+            selected.remove(path);
+        }
+    } else {
+        if is_ign {
+            // Un-ignore this folder and all its descendants
+            ignored.remove(&items[idx].path);
+            for ci in kids {
+                ignored.remove(&items[ci].path);
+            }
+        } else {
+            // Ignore this folder and all its descendants
+            ignored.insert(items[idx].path.clone());
+            selected.remove(&items[idx].path);
+            for ci in kids {
+                ignored.insert(items[ci].path.clone());
+                selected.remove(&items[ci].path);
+            }
         }
     }
 }
@@ -236,19 +321,21 @@ fn toggle_all_visible(items: &[Item], selected: &mut HashSet<PathBuf>) {
 fn run_selector(
     roots: &[(Node, PathBuf, ItemKind)],
     kind_map: Option<&HashMap<PathBuf, ItemKind>>,
-) -> io::Result<Option<HashSet<PathBuf>>> {
+) -> io::Result<Option<Selection>> {
     let all_items = if let Some(km) = kind_map {
         build_items_with_kinds(roots, km)
     } else {
         build_items(roots)
     };
     if all_items.is_empty() {
-        return Ok(Some(HashSet::new()));
+        return Ok(Some(Selection::default()));
     }
+
+    let mut ignored = collect_initial_ignored(roots);
 
     let mut selected: HashSet<PathBuf> = all_items
         .iter()
-        .filter(|i| matches!(i.node_type, NodeType::File))
+        .filter(|i| matches!(i.node_type, NodeType::File) && !ignored.contains(&i.path))
         .map(|i| i.path.clone())
         .collect();
 
@@ -282,6 +369,7 @@ fn run_selector(
         cursor,
         scroll,
         &selected,
+        &ignored,
         filter_mode,
         &query,
     )?;
@@ -335,7 +423,7 @@ fn run_selector(
                         }
                         KeyCode::Tab | KeyCode::BackTab => {
                             if !items.is_empty() {
-                                toggle(&items, cursor, &mut selected);
+                                toggle(&items, cursor, &mut selected, &ignored);
                                 dirty = true;
                             }
                         }
@@ -354,7 +442,7 @@ fn run_selector(
                             }
                         }
                         KeyCode::Char('a') if modifiers.contains(KeyModifiers::CONTROL) => {
-                            toggle_all_visible(&items, &mut selected);
+                            toggle_all_visible(&items, &mut selected, &ignored);
                             dirty = true;
                         }
                         KeyCode::Char('j') if modifiers.contains(KeyModifiers::CONTROL) => {
@@ -402,12 +490,18 @@ fn run_selector(
                         }
                         KeyCode::Char(' ') | KeyCode::Tab => {
                             if !items.is_empty() {
-                                toggle(&items, cursor, &mut selected);
+                                toggle(&items, cursor, &mut selected, &ignored);
+                                dirty = true;
+                            }
+                        }
+                        KeyCode::Char('i') => {
+                            if !items.is_empty() {
+                                toggle_ignore(&items, cursor, &mut selected, &mut ignored);
                                 dirty = true;
                             }
                         }
                         KeyCode::Char('a') => {
-                            toggle_all_visible(&items, &mut selected);
+                            toggle_all_visible(&items, &mut selected, &ignored);
                             dirty = true;
                         }
                         KeyCode::Char('/') => {
@@ -425,7 +519,7 @@ fn run_selector(
                                 break None;
                             }
                         }
-                        KeyCode::Enter => break Some(selected),
+                        KeyCode::Enter => break Some(Selection { selected, ignored }),
                         KeyCode::Char('q') => break None,
                         _ => {}
                     }
@@ -444,6 +538,7 @@ fn run_selector(
                 cursor,
                 scroll,
                 &selected,
+                &ignored,
                 filter_mode,
                 &query,
             )?;
@@ -566,9 +661,17 @@ fn descendants(items: &[Item], idx: usize) -> Vec<usize> {
         .collect()
 }
 
-fn check_state(items: &[Item], idx: usize, sel: &HashSet<PathBuf>) -> Check {
+fn check_state(
+    items: &[Item],
+    idx: usize,
+    sel: &HashSet<PathBuf>,
+    ign: &HashSet<PathBuf>,
+) -> Check {
     let kids = descendants(items, idx);
     if kids.is_empty() {
+        if ign.contains(&items[idx].path) {
+            return Check::Ignored;
+        }
         return if sel.contains(&items[idx].path) {
             Check::Full
         } else {
@@ -581,13 +684,18 @@ fn check_state(items: &[Item], idx: usize, sel: &HashSet<PathBuf>) -> Check {
         .filter(|&i| matches!(items[i].node_type, NodeType::File))
         .collect();
     if files.is_empty() {
+        if ign.contains(&items[idx].path) {
+            return Check::Ignored;
+        }
         let states: Vec<Check> = kids
             .iter()
             .copied()
             .filter(|&i| matches!(items[i].node_type, NodeType::Folder))
-            .map(|i| check_state(items, i, sel))
+            .map(|i| check_state(items, i, sel, ign))
             .collect();
-        return if states.iter().all(|&s| s == Check::Full) {
+        return if !states.is_empty() && states.iter().all(|&s| s == Check::Ignored) {
+            Check::Ignored
+        } else if !states.is_empty() && states.iter().all(|&s| s == Check::Full) {
             Check::Full
         } else if states.iter().all(|&s| s == Check::None) {
             Check::None
@@ -595,36 +703,67 @@ fn check_state(items: &[Item], idx: usize, sel: &HashSet<PathBuf>) -> Check {
             Check::Partial
         };
     }
-    let n = files
+
+    let ign_count = files
+        .iter()
+        .filter(|&&i| ign.contains(&items[i].path))
+        .count();
+
+    if ign_count == files.len() || ign.contains(&items[idx].path) {
+        return Check::Ignored;
+    }
+
+    let non_ign_files: Vec<usize> = files
+        .iter()
+        .copied()
+        .filter(|&i| !ign.contains(&items[i].path))
+        .collect();
+
+    let sel_count = non_ign_files
         .iter()
         .filter(|&&i| sel.contains(&items[i].path))
         .count();
-    if n == 0 {
+
+    if sel_count == 0 && ign_count == 0 {
         Check::None
-    } else if n == files.len() {
+    } else if sel_count == non_ign_files.len() && ign_count == 0 {
         Check::Full
     } else {
         Check::Partial
     }
 }
 
-fn toggle(items: &[Item], idx: usize, sel: &mut HashSet<PathBuf>) {
-    let do_sel = check_state(items, idx, sel) != Check::Full;
+fn toggle(items: &[Item], idx: usize, sel: &mut HashSet<PathBuf>, ign: &HashSet<PathBuf>) {
     let kids = descendants(items, idx);
     if kids.is_empty() {
-        if do_sel {
-            sel.insert(items[idx].path.clone());
-        } else {
+        if ign.contains(&items[idx].path) {
+            return;
+        }
+        if sel.contains(&items[idx].path) {
             sel.remove(&items[idx].path);
+        } else {
+            sel.insert(items[idx].path.clone());
         }
     } else {
-        for ci in kids {
-            if matches!(items[ci].node_type, NodeType::File) {
-                if do_sel {
-                    sel.insert(items[ci].path.clone());
-                } else {
-                    sel.remove(&items[ci].path);
-                }
+        let active_files: Vec<usize> = kids
+            .into_iter()
+            .filter(|&ci| {
+                matches!(items[ci].node_type, NodeType::File) && !ign.contains(&items[ci].path)
+            })
+            .collect();
+
+        if active_files.is_empty() {
+            return;
+        }
+
+        let all_selected = active_files.iter().all(|&ci| sel.contains(&items[ci].path));
+        if all_selected {
+            for ci in active_files {
+                sel.remove(&items[ci].path);
+            }
+        } else {
+            for ci in active_files {
+                sel.insert(items[ci].path.clone());
             }
         }
     }
@@ -636,12 +775,14 @@ fn toggle(items: &[Item], idx: usize, sel: &mut HashSet<PathBuf>) {
 // Every frame: MoveTo to each row, overwrite content, clear rest of line.
 // Nothing is ever printed incrementally — the whole frame is atomic.
 
+#[allow(clippy::too_many_arguments)]
 fn draw(
     out: &mut impl Write,
     items: &[Item],
     cursor: usize,
     scroll: usize,
     sel: &HashSet<PathBuf>,
+    ign: &HashSet<PathBuf>,
     filter_mode: bool,
     query: &str,
 ) -> io::Result<()> {
@@ -659,14 +800,17 @@ fn draw(
         .enumerate()
     {
         let is_cur = i == cursor;
-        let state = check_state(items, i, sel);
+        let state = check_state(items, i, sel, ign);
 
-        let check_sym = match (item.kind, state) {
-            (ItemKind::Added, Check::Full) => "[+]",
-            (ItemKind::Removed, Check::Full) => "[-]",
-            (_, Check::Full) => "[x]",
-            (_, Check::None) => "[ ]",
-            (_, Check::Partial) => "[~]",
+        let check_sym = match state {
+            Check::Ignored => "[i]",
+            Check::Full => match item.kind {
+                ItemKind::Added => "[+]",
+                ItemKind::Removed => "[-]",
+                _ => "[x]",
+            },
+            Check::None => "[ ]",
+            Check::Partial => "[~]",
         };
 
         queue!(out, cursor::MoveTo(0, row as u16))?;
@@ -686,6 +830,7 @@ fn draw(
 
         // Checkbox.
         let (check_fg, check_bold) = match state {
+            Check::Ignored => (Color::DarkGrey, true),
             Check::Full => (Color::White, true),
             Check::None => (Color::DarkGrey, false),
             Check::Partial => (Color::Yellow, false),
@@ -711,7 +856,7 @@ fn draw(
             ResetColor,
         )?;
 
-        // Name colour by kind; dim when deselected.
+        // Name colour by kind; dim when deselected or ignored.
         let name_fg = match item.kind {
             ItemKind::Added => Color::Green,
             ItemKind::Modified => Color::Rgb {
@@ -725,20 +870,25 @@ fn draw(
                 NodeType::File => Color::White,
             },
         };
-        let effective_fg = if matches!(state, Check::None) {
-            Color::DarkGrey
-        } else {
-            name_fg
+        let effective_fg = match state {
+            Check::Ignored | Check::None => Color::DarkGrey,
+            _ => name_fg,
         };
         queue!(out, SetForegroundColor(effective_fg))?;
         if matches!(item.node_type, NodeType::Folder) {
             queue!(out, SetAttribute(Attribute::Bold))?;
         }
 
+        let display_name = if state == Check::Ignored {
+            format!("{} (ignored)", item.name)
+        } else {
+            item.name.clone()
+        };
+
         // Fixed chars used so far: 2 (marker) + 3 (checkbox) + 1 (sp)
         //   + prefix.len() + connector.len() = overhead
         let overhead = 2 + 3 + 1 + item.prefix.chars().count() + connector.chars().count();
-        let name = trunc(&item.name, cols.saturating_sub(overhead));
+        let name = trunc(&display_name, cols.saturating_sub(overhead));
         queue!(
             out,
             Print(name),
@@ -785,6 +935,10 @@ fn draw(
         .iter()
         .filter(|i| matches!(i.node_type, NodeType::File))
         .count();
+    let ign_count = items
+        .iter()
+        .filter(|i| matches!(i.node_type, NodeType::File) && ign.contains(&i.path))
+        .count();
     let visible_selected = items
         .iter()
         .filter(|i| matches!(i.node_type, NodeType::File) && sel.contains(&i.path))
@@ -800,18 +954,32 @@ fn draw(
         (prompt, controls, Color::White, Color::Black)
     } else if !query.is_empty() {
         let filter_info = format!(
-            "  Filter: \"{}\"  [Space] Toggle  [a] All  [/] Filter  [Esc] Clear  [Enter] Confirm  [q] Quit",
+            "  Filter: \"{}\"  [Space] Toggle  [i] Ignore  [a] All  [/] Filter  [Esc] Clear  [Enter] Confirm  [q] Quit",
             query
         );
-        let stats = format!(
-            "  {}/{} visible ({} total)  ",
-            visible_selected, total_files, sel_count
-        );
+        let stats = if ign_count > 0 {
+            format!(
+                "  {}/{} visible ({} total, {} ignored)  ",
+                visible_selected, total_files, sel_count, ign_count
+            )
+        } else {
+            format!(
+                "  {}/{} visible ({} total)  ",
+                visible_selected, total_files, sel_count
+            )
+        };
         (filter_info, stats, Color::DarkGrey, Color::Black)
     } else {
-        let controls = "  [Space] Toggle  [a] All  [/] Filter  [j/k] ↑↓  [Enter] Confirm  [q] Quit"
+        let controls = "  [Space] Toggle  [i] Ignore  [a] All  [/] Filter  [j/k] ↑↓  [Enter] Confirm  [q] Quit"
             .to_string();
-        let stats = format!("  {}/{} selected  ", sel_count, total_files);
+        let stats = if ign_count > 0 {
+            format!(
+                "  {}/{} selected ({} ignored)  ",
+                sel_count, total_files, ign_count
+            )
+        } else {
+            format!("  {}/{} selected  ", sel_count, total_files)
+        };
         (controls, stats, Color::DarkGrey, Color::Black)
     };
 
@@ -924,13 +1092,87 @@ mod tests {
         ];
 
         let mut selected = HashSet::new();
+        let ignored = HashSet::new();
         // Toggle when none selected -> selects all
-        toggle_all_visible(&items, &mut selected);
+        toggle_all_visible(&items, &mut selected, &ignored);
         assert_eq!(selected.len(), 2);
 
         // Toggle when all selected -> deselects all
-        toggle_all_visible(&items, &mut selected);
+        toggle_all_visible(&items, &mut selected, &ignored);
         assert_eq!(selected.len(), 0);
+    }
+
+    #[test]
+    fn test_toggle_all_visible_skips_ignored() {
+        let items = vec![
+            Item {
+                depth: 0,
+                path: PathBuf::from("a.txt"),
+                name: "a.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+            Item {
+                depth: 0,
+                path: PathBuf::from("b.txt"),
+                name: "b.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+        ];
+
+        let mut selected = HashSet::new();
+        let mut ignored = HashSet::new();
+        ignored.insert(PathBuf::from("b.txt"));
+
+        // Only a.txt should be selected
+        toggle_all_visible(&items, &mut selected, &ignored);
+        assert_eq!(selected.len(), 1);
+        assert!(selected.contains(&PathBuf::from("a.txt")));
+        assert!(!selected.contains(&PathBuf::from("b.txt")));
+    }
+
+    #[test]
+    fn test_toggle_ignore() {
+        let items = vec![
+            Item {
+                depth: 0,
+                path: PathBuf::from("folder"),
+                name: "folder".to_string(),
+                node_type: NodeType::Folder,
+                kind: ItemKind::Normal,
+                is_last: false,
+                prefix: String::new(),
+            },
+            Item {
+                depth: 1,
+                path: PathBuf::from("folder/file.txt"),
+                name: "file.txt".to_string(),
+                node_type: NodeType::File,
+                kind: ItemKind::Normal,
+                is_last: true,
+                prefix: "    ".to_string(),
+            },
+        ];
+
+        let mut selected = HashSet::new();
+        selected.insert(PathBuf::from("folder/file.txt"));
+        let mut ignored = HashSet::new();
+
+        // Toggling ignore on the folder ignores folder & child, and removes child from selected
+        toggle_ignore(&items, 0, &mut selected, &mut ignored);
+        assert!(ignored.contains(&PathBuf::from("folder")));
+        assert!(ignored.contains(&PathBuf::from("folder/file.txt")));
+        assert!(!selected.contains(&PathBuf::from("folder/file.txt")));
+
+        // Toggling ignore on the folder again un-ignores both
+        toggle_ignore(&items, 0, &mut selected, &mut ignored);
+        assert!(!ignored.contains(&PathBuf::from("folder")));
+        assert!(!ignored.contains(&PathBuf::from("folder/file.txt")));
     }
 
     #[test]

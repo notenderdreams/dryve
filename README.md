@@ -27,7 +27,8 @@ It fetches a Drive folder tree, lets you select files in an interactive terminal
 - Pull an entire Google Drive folder tree from a shared folder URL.
 - Interactive terminal selector for choosing files/folders before download.
 - Multi-threaded downloads using a Rayon thread pool.
-- Sync mode that detects added, updated, and removed files.
+- Ignore items (`i` in selector) to persistently skip them across future syncs.
+- Sync mode that detects added, updated, and removed files while honoring ignored items.
 - Safe filename sanitization for cross-platform local paths.
 
 ## Installation
@@ -73,9 +74,9 @@ dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 What it does:
 
 - Fetches the remote folder tree recursively.
-- Opens an interactive selector (`j/k` move, `Space` toggle, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm).
-- Downloads selected files in parallel.
-- Writes metadata to `<root-folder>/dryve.json`.
+- Opens an interactive selector (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm).
+- Downloads selected files in parallel (skipping ignored items).
+- Writes metadata to `<root-folder>/dryve.json` (persisting ignored files/folders).
 
 ### `sync`
 

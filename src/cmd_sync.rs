@@ -167,13 +167,23 @@ pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
 
     let root_id = old_root.id.as_deref().context("root node is missing ID")?;
     println!("Fetching remote tree for ID: {}...", root_id);
-    let new_root = fetch_from_id(root_id)?;
+    let mut new_root = fetch_from_id(root_id)?;
+
+    // Inherit ignore settings from old metadata
+    let mut ignored_ids = HashSet::new();
+    let mut ignored_paths = HashSet::new();
+    old_root.collect_ignored(Path::new(""), &mut ignored_ids, &mut ignored_paths);
+    new_root.inherit_ignored(Path::new(""), false, &ignored_ids, &ignored_paths);
 
     let diff = Diff::from_nodes(&old_root, &new_root);
 
     let roots = build_sync_roots(&new_root, &diff);
 
     if roots.is_empty() {
+        let mut root = new_root;
+        root.prune_missing_at_root();
+        let json = serde_json::to_string_pretty(&root)?;
+        fs::write(json_path, json)?;
         println!("Everything is up to date.");
         return Ok(());
     }
@@ -184,7 +194,7 @@ pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
     let selection = selector::select_with_kinds(&roots, &kind_map)
         .map_err(|e| anyhow::anyhow!("selector error: {}", e))?;
 
-    let selected: HashSet<PathBuf> = match selection {
+    let selection = match selection {
         Some(s) => s,
         None => {
             println!("Sync cancelled.");
@@ -192,10 +202,12 @@ pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
         }
     };
 
-    if selected.is_empty() {
+    if selection.selected.is_empty() && selection.ignored.is_empty() {
         println!("Nothing selected.");
         return Ok(());
     }
+
+    let selected = &selection.selected;
 
     // Split the confirmed selection back into add / update / remove buckets.
     let mut to_add: Vec<FileTask> = Vec::new();
@@ -282,6 +294,20 @@ pub fn run(threads: usize, folder: Option<&str>) -> Result<()> {
             fs::remove_file(path)?;
         }
         println!("Removed: {}", path.display());
+    }
+
+    // Update ignore settings for nodes shown in selector
+    let mut selector_paths = HashSet::new();
+    for (root_node, base, _) in &roots {
+        root_node.collect_paths(base, &mut selector_paths);
+    }
+    for child in &mut new_root.children {
+        child.apply_selector_changes(
+            Path::new(""),
+            new_root.ignored,
+            &selector_paths,
+            &selection.ignored,
+        );
     }
 
     let mut root = new_root;
