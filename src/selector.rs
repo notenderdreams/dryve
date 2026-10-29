@@ -589,12 +589,16 @@ fn flatten(
     out: &mut Vec<Item>,
 ) {
     let path = base.join(sanitize_name(&node.name));
+    let size = match node.node_type {
+        NodeType::File => node.size,
+        NodeType::Folder => node.size.or_else(|| Some(node.total_size())),
+    };
     out.push(Item {
         depth,
         path: path.clone(),
         name: node.name.clone(),
         node_type: node.node_type.clone(),
-        size: node.size,
+        size,
         kind,
         is_last,
         prefix: prefix.to_string(),
@@ -627,12 +631,16 @@ fn flatten_with_kinds(
 ) {
     let path = base.join(sanitize_name(&node.name));
     let kind = kind_map.get(&path).copied().unwrap_or(default_kind);
+    let size = match node.node_type {
+        NodeType::File => node.size,
+        NodeType::Folder => node.size.or_else(|| Some(node.total_size())),
+    };
     out.push(Item {
         depth,
         path: path.clone(),
         name: node.name.clone(),
         node_type: node.node_type.clone(),
-        size: node.size,
+        size,
         kind,
         is_last,
         prefix: prefix.to_string(),
@@ -1281,21 +1289,31 @@ mod tests {
     }
 
     #[test]
-    fn test_flatten_preserves_size() {
-        let mut file = Node::new("report.pdf".to_string(), NodeType::File, None);
-        file.size = Some(2_516_582);
+    fn test_flatten_computes_folder_size() {
+        let mut file1 = Node::new("report.pdf".to_string(), NodeType::File, None);
+        file1.size = Some(2_500_000);
+
+        let mut file2 = Node::new("notes.txt".to_string(), NodeType::File, None);
+        file2.size = Some(16_582);
+
+        let mut subfolder = Node::new("sub".to_string(), NodeType::Folder, None);
+        subfolder.children = vec![file2];
 
         let mut folder = Node::new("docs".to_string(), NodeType::Folder, None);
-        folder.children = vec![file];
+        folder.children = vec![file1, subfolder];
 
         let roots = vec![(folder, PathBuf::new(), ItemKind::Normal)];
         let items = build_items(&roots);
 
-        assert_eq!(items.len(), 2);
+        assert_eq!(items.len(), 4);
         assert_eq!(items[0].node_type, NodeType::Folder);
-        assert_eq!(items[0].size, None);
+        assert_eq!(items[0].size, Some(2_516_582));
         assert_eq!(items[1].node_type, NodeType::File);
-        assert_eq!(items[1].size, Some(2_516_582));
+        assert_eq!(items[1].size, Some(2_500_000));
+        assert_eq!(items[2].node_type, NodeType::Folder);
+        assert_eq!(items[2].size, Some(16_582));
+        assert_eq!(items[3].node_type, NodeType::File);
+        assert_eq!(items[3].size, Some(16_582));
     }
 
     #[test]

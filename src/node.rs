@@ -32,7 +32,6 @@ impl Node {
         }
     }
 
-    #[allow(dead_code)]
     pub fn total_size(&self) -> u64 {
         match self.node_type {
             NodeType::File => self.size.unwrap_or(0),
