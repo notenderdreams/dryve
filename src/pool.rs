@@ -9,6 +9,7 @@ pub struct FileTask {
     pub id: String,
     pub name: String,
     pub path: PathBuf,
+    pub mime_type: Option<String>,
 }
 
 pub fn run<F>(tasks: Vec<FileTask>, f: F, threads: usize) -> Vec<String>

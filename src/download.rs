@@ -87,6 +87,54 @@ fn is_fatal_error(err: &anyhow::Error) -> bool {
     false
 }
 
+pub fn is_google_workspace_mime(mime_type: Option<&str>) -> bool {
+    let Some(mime) = mime_type else {
+        return false;
+    };
+    matches!(
+        mime,
+        "application/vnd.google-apps.document"
+            | "application/vnd.google-apps.spreadsheet"
+            | "application/vnd.google-apps.presentation"
+            | "application/vnd.google-apps.drawing"
+    )
+}
+
+pub fn google_workspace_export_filename(mime_type: Option<&str>, name: &str) -> String {
+    if !is_google_workspace_mime(mime_type) {
+        return name.to_string();
+    }
+    let ext = ".pdf";
+    if name.to_lowercase().ends_with(ext) {
+        name.to_string()
+    } else {
+        format!("{}{}", name, ext)
+    }
+}
+
+pub fn google_workspace_export_url(mime_type: Option<&str>, id: &str) -> Option<String> {
+    let mime = mime_type?;
+    match mime {
+        "application/vnd.google-apps.document" => Some(format!(
+            "https://docs.google.com/document/d/{}/export?format=pdf",
+            id
+        )),
+        "application/vnd.google-apps.spreadsheet" => Some(format!(
+            "https://docs.google.com/spreadsheets/d/{}/export?format=pdf",
+            id
+        )),
+        "application/vnd.google-apps.presentation" => Some(format!(
+            "https://docs.google.com/presentation/d/{}/export/pdf",
+            id
+        )),
+        "application/vnd.google-apps.drawing" => Some(format!(
+            "https://docs.google.com/drawings/d/{}/export/pdf",
+            id
+        )),
+        _ => None,
+    }
+}
+
 pub fn collect_tasks(
     node: &Node,
     base: &Path,
@@ -109,6 +157,7 @@ pub fn collect_tasks(
                     id: id.clone(),
                     name: node.name.clone(),
                     path: base.join(sanitize_name(&node.name)),
+                    mime_type: node.mime_type.clone(),
                 });
             }
         }
@@ -165,7 +214,12 @@ fn check_status(response: &reqwest::blocking::Response) -> Result<()> {
 }
 
 fn download_file_attempt(client: &Client, task: &FileTask, part_path: &Path) -> Result<u64> {
-    let start_pos = if part_path.exists() {
+    let export_url = google_workspace_export_url(task.mime_type.as_deref(), &task.id);
+
+    let start_pos = if export_url.is_some() {
+        // Google Docs export endpoints don't reliably support HTTP Range resume
+        0
+    } else if part_path.exists() {
         fs::metadata(part_path).map(|m| m.len()).unwrap_or(0)
     } else if task.path.exists() {
         fs::metadata(&task.path).map(|m| m.len()).unwrap_or(0)
@@ -173,7 +227,12 @@ fn download_file_attempt(client: &Client, task: &FileTask, part_path: &Path) -> 
         0
     };
 
-    let url = format!("https://drive.google.com/uc?export=download&id={}", task.id);
+    let url = if let Some(ref export_url) = export_url {
+        export_url.clone()
+    } else {
+        format!("https://drive.google.com/uc?export=download&id={}", task.id)
+    };
+
     let mut req = client.get(&url);
     if start_pos > 0 {
         req = req.header(RANGE, format!("bytes={}-", start_pos));
@@ -189,7 +248,12 @@ fn download_file_attempt(client: &Client, task: &FileTask, part_path: &Path) -> 
             .unwrap_or("")
             .to_string();
 
-        if content_type.contains("text/html") {
+        if export_url.is_some() && content_type.contains("text/html") {
+            anyhow::bail!(
+                "Google Workspace export failed: received HTML response for {}",
+                task.name
+            );
+        } else if content_type.contains("text/html") {
             let html = response.text()?;
             let confirm_url = extract_confirm_url(&html, &task.id)?;
             let mut confirm_req = client.get(&confirm_url);
@@ -245,6 +309,9 @@ fn download_file_attempt(client: &Client, task: &FileTask, part_path: &Path) -> 
             .and_then(|v| v.to_str().ok())
             .and_then(parse_content_range_total)
             .or_else(|| response.content_length().map(|len| start_pos + len))
+    } else if export_url.is_some() {
+        // Google Docs export endpoints can omit content-length or send 0 on redirects
+        None
     } else {
         response.content_length()
     };
@@ -314,9 +381,13 @@ pub fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
     let max_attempts = 5;
     for attempt in 0..max_attempts {
         match download_file_attempt(client, task, &part_path) {
-            Ok(_) => {
+            Ok(bytes) => {
                 let final_disk_bytes = fs::metadata(&task.path).map(|m| m.len()).unwrap_or(0);
-                return Ok(final_disk_bytes.saturating_sub(initial_disk_bytes));
+                let added = final_disk_bytes.saturating_sub(initial_disk_bytes);
+                if added == 0 && bytes > 0 {
+                    return Ok(bytes);
+                }
+                return Ok(added);
             }
             Err(e) => {
                 if is_fatal_error(&e) || attempt + 1 >= max_attempts {
@@ -432,5 +503,83 @@ mod tests {
             url,
             "https://drive.google.com/uc?export=download&id=abc&confirm=t_1234"
         );
+    }
+
+    #[test]
+    fn test_google_workspace_export_filename() {
+        assert_eq!(
+            google_workspace_export_filename(
+                Some("application/vnd.google-apps.document"),
+                "Project Plan"
+            ),
+            "Project Plan.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(
+                Some("application/vnd.google-apps.document"),
+                "Project Plan.pdf"
+            ),
+            "Project Plan.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(
+                Some("application/vnd.google-apps.spreadsheet"),
+                "Financials"
+            ),
+            "Financials.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(
+                Some("application/vnd.google-apps.presentation"),
+                "Pitch Deck"
+            ),
+            "Pitch Deck.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(
+                Some("application/vnd.google-apps.drawing"),
+                "Diagram"
+            ),
+            "Diagram.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(Some("application/pdf"), "report.pdf"),
+            "report.pdf"
+        );
+        assert_eq!(
+            google_workspace_export_filename(None, "notes.txt"),
+            "notes.txt"
+        );
+    }
+
+    #[test]
+    fn test_google_workspace_export_url() {
+        assert_eq!(
+            google_workspace_export_url(Some("application/vnd.google-apps.document"), "doc123"),
+            Some("https://docs.google.com/document/d/doc123/export?format=pdf".to_string())
+        );
+        assert_eq!(
+            google_workspace_export_url(
+                Some("application/vnd.google-apps.spreadsheet"),
+                "sheet123"
+            ),
+            Some("https://docs.google.com/spreadsheets/d/sheet123/export?format=pdf".to_string())
+        );
+        assert_eq!(
+            google_workspace_export_url(
+                Some("application/vnd.google-apps.presentation"),
+                "pres123"
+            ),
+            Some("https://docs.google.com/presentation/d/pres123/export/pdf".to_string())
+        );
+        assert_eq!(
+            google_workspace_export_url(Some("application/vnd.google-apps.drawing"), "draw123"),
+            Some("https://docs.google.com/drawings/d/draw123/export/pdf".to_string())
+        );
+        assert_eq!(
+            google_workspace_export_url(Some("application/pdf"), "pdf123"),
+            None
+        );
+        assert_eq!(google_workspace_export_url(None, "none123"), None);
     }
 }

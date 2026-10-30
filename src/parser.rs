@@ -87,6 +87,8 @@ fn parse_json_items(data: &str, root: &mut Node) -> bool {
 
         if !name.is_empty() && !name.starts_with("application/") {
             let is_folder = type_str == "application/vnd.google-apps.folder";
+            let final_name =
+                crate::download::google_workspace_export_filename(Some(type_str), name);
 
             let size = if is_folder {
                 None
@@ -97,10 +99,10 @@ fn parse_json_items(data: &str, root: &mut Node) -> bool {
                     .or_else(|| item_arr.get(27).and_then(|v| v.as_u64()))
             };
 
-            let exists = root.children.iter().any(|c| c.name == name);
+            let exists = root.children.iter().any(|c| c.name == final_name);
             if !exists {
                 let mut child = Node::new(
-                    name.to_string(),
+                    final_name,
                     if is_folder {
                         NodeType::Folder
                     } else {
@@ -109,6 +111,7 @@ fn parse_json_items(data: &str, root: &mut Node) -> bool {
                     Some(item_id.to_string()),
                 );
                 child.size = size;
+                child.mime_type = Some(type_str.to_string());
                 root.children.push(child);
                 found_any = true;
             }
@@ -176,6 +179,8 @@ fn parse_fallback_items(data: &str, root: &mut Node) {
 
         if !name.is_empty() && !name.starts_with("application/") {
             let is_folder = type_str == "application/vnd.google-apps.folder";
+            let final_name =
+                crate::download::google_workspace_export_filename(Some(type_str), name);
 
             let size = if is_folder {
                 None
@@ -192,10 +197,10 @@ fn parse_fallback_items(data: &str, root: &mut Node) {
                 None
             };
 
-            let exists = root.children.iter().any(|c| c.name == name);
+            let exists = root.children.iter().any(|c| c.name == final_name);
             if !exists {
                 let mut child = Node::new(
-                    name.to_string(),
+                    final_name,
                     if is_folder {
                         NodeType::Folder
                     } else {
@@ -204,6 +209,7 @@ fn parse_fallback_items(data: &str, root: &mut Node) {
                     Some(item_id.to_string()),
                 );
                 child.size = size;
+                child.mime_type = Some(type_str.to_string());
                 root.children.push(child);
             }
         }
@@ -284,9 +290,40 @@ mod tests {
         let folder = &node.children[0];
         assert_eq!(folder.name, "Subfolder");
         assert_eq!(folder.size, None);
+        assert_eq!(
+            folder.mime_type.as_deref(),
+            Some("application/vnd.google-apps.folder")
+        );
 
         let file = &node.children[1];
         assert_eq!(file.name, "report.pdf");
         assert_eq!(file.size, Some(2516582));
+        assert_eq!(file.mime_type.as_deref(), Some("application/pdf"));
+    }
+
+    #[test]
+    fn test_parse_html_with_google_workspace_docs() {
+        let html = r#"<html><head><title>Docs Folder - Google Drive</title></head>
+        <body><script>
+        window['_DRIVE_ivd'] = '[[[\"doc_1234567890\",[1],\"Resume\",\"application/vnd.google-apps.document\",0,null,0,0,0,100,100,null,null,3663],[\"sheet_1234567890\",[1],\"Budget.pdf\",\"application/vnd.google-apps.spreadsheet\",0,null,0,0,0,100,100,null,null,1200]]]';
+        </script></body></html>"#;
+
+        let node = parse_html(html).expect("parse should succeed");
+        assert_eq!(node.name, "Docs Folder");
+        assert_eq!(node.children.len(), 2);
+
+        let doc = &node.children[0];
+        assert_eq!(doc.name, "Resume.pdf");
+        assert_eq!(
+            doc.mime_type.as_deref(),
+            Some("application/vnd.google-apps.document")
+        );
+
+        let sheet = &node.children[1];
+        assert_eq!(sheet.name, "Budget.pdf");
+        assert_eq!(
+            sheet.mime_type.as_deref(),
+            Some("application/vnd.google-apps.spreadsheet")
+        );
     }
 }

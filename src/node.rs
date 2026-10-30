@@ -18,6 +18,8 @@ pub struct Node {
     pub ignored: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub size: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mime_type: Option<String>,
 }
 
 impl Node {
@@ -29,6 +31,7 @@ impl Node {
             children: Vec::new(),
             ignored: false,
             size: None,
+            mime_type: None,
         }
     }
 

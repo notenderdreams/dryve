@@ -217,6 +217,7 @@ dryve sync "<downloaded-folder>"
 ## Notes
 
 - Works with publicly accessible Google Drive folder links.
+- Google Docs, Sheets, Slides, and Drawings automatically export to PDF (`.pdf`) on download.
 - If no items are selected in the selector, no files are downloaded/synced.
 
 ## Development
