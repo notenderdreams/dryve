@@ -29,6 +29,7 @@ It fetches a Drive folder tree, lets you select files in an interactive terminal
 - Multi-threaded downloads using a Rayon thread pool.
 - Ignore items (`i` in selector) to persistently skip them across future syncs.
 - Sync mode that detects added, updated, and removed files while honoring ignored items.
+- Check local downloads for missing files and size mismatches, with selective repair.
 - Safe filename sanitization for cross-platform local paths.
 
 ## Installation
@@ -172,6 +173,57 @@ Changes (3 files, 14.2 MB):
 Use 'dryve sync' to apply changes.
 ```
 
+### `check`
+
+Alias: `ck`
+
+Check local files against the entries saved in `dryve.json`. Checking works offline
+and does not modify files or metadata:
+
+```bash
+dryve check
+dryve ck ./materials
+
+# Select affected files to download again
+dryve check ./materials --repair
+
+# Repair all affected files without the selector
+dryve check ./materials --repair -y
+
+# Check or repair only matching files
+dryve check ./materials --repair --include "*.pdf" --exclude "archive/*"
+
+# Include ignored files, or limit parallel repair downloads
+dryve check ./materials -I
+dryve check ./materials --repair -y -j 2
+```
+
+Options:
+
+- `--repair`: Open the selector for missing files and files with unexpected sizes, then download the selected files again.
+- `-y, --yes`: With `--repair`, select all affected files automatically.
+- `--include <PATTERN>` / `--exclude <PATTERN>`: Filter checked files; repeatable.
+- `-I, --include-ignored`: Check ignored files too and make affected entries eligible for repair. Saved ignore settings stay unchanged.
+- `-j, --threads <N>`: Number of parallel repair downloads (default: 8).
+
+Checks detect missing files, unexpected byte sizes, and paths blocked by directories
+or symbolic links. Blocked paths require manual resolution. Files without a known
+size, including Google Docs/Sheets/Slides/Drawings PDF exports, are reported as
+present with no size information. This is a size check, so changes that preserve
+file size are not detected; checksum verification is not included.
+
+Repair downloads a fresh copy to a temporary directory beside the destination,
+checks its size when known, and replaces the local file only after success.
+Existing files survive failed transfers or size validation. Repairs fetch the
+current remote content, which may include remote changes or overwrite local edits.
+If the downloaded size differs from saved metadata, the replacement is rejected;
+use `dryve sync` to review remote changes.
+
+Only entries recorded in `dryve.json` are checked. Untracked files are left alone,
+and repair does not update metadata. Exit status is nonzero when problems remain,
+metadata cannot be read, or a repair fails. Entries without size information alone
+do not cause failure. Cancelling the interactive selector exits successfully.
+
 ### `open`
 
 Alias: `o`
@@ -217,6 +269,7 @@ dryve sync "<downloaded-folder>"
 - `src/cmd_open.rs`: Open command flow + browser launch.
 - `src/cmd_pull.rs`: Pull flow + selector + initial metadata write.
 - `src/cmd_status.rs`: Status command flow + change summary.
+- `src/cmd_check.rs`: Offline local checks + selective repair.
 - `src/cmd_sync.rs`: Diff + selective sync + metadata refresh.
 - `src/drive.rs`: Google Drive folder discovery and recursive traversal.
 - `src/parser.rs`: HTML parsing for Drive listing data.

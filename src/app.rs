@@ -5,7 +5,7 @@ use std::path::PathBuf;
 #[derive(Parser)]
 #[command(name = "dryve", version, about = "Drive sync tool")]
 pub struct Cli {
-    /// Number of threads to use for syncing (default: 8)
+    /// Number of parallel download threads
     #[arg(short = 'j', long, default_value_t = 8, global = true)]
     pub threads: usize,
 
@@ -57,6 +57,20 @@ pub enum Commands {
         #[arg(short = 'I', long)]
         include_ignored: bool,
     },
+    /// Check local downloads for missing files and unexpected sizes
+    #[command(visible_alias = "ck")]
+    Check {
+        /// Optional folder path containing dryve.json
+        path: Option<PathBuf>,
+
+        /// Download selected missing or damaged files again
+        #[arg(long)]
+        repair: bool,
+
+        /// Check ignored files too
+        #[arg(short = 'I', long)]
+        include_ignored: bool,
+    },
     /// Open the drive link in browser
     #[command(visible_alias = "o")]
     Open {
@@ -98,6 +112,21 @@ pub fn run() -> Result<()> {
         Commands::Open { path } => {
             crate::cmd_open::run(path.as_deref())?;
         }
+        Commands::Check {
+            path,
+            repair,
+            include_ignored,
+        } => {
+            crate::cmd_check::run(
+                path.as_deref(),
+                *repair,
+                *include_ignored,
+                threads,
+                yes,
+                include,
+                exclude,
+            )?;
+        }
     }
 
     Ok(())
@@ -106,6 +135,43 @@ pub fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_check_command_and_flags() {
+        for command in ["check", "ck"] {
+            let cli = Cli::try_parse_from([
+                "dryve",
+                command,
+                "./materials",
+                "--repair",
+                "-y",
+                "-I",
+                "-j",
+                "2",
+                "--include",
+                "*.pdf",
+                "--exclude",
+                "archive/*",
+            ])
+            .unwrap();
+            assert!(cli.yes);
+            assert_eq!(cli.threads, 2);
+            assert_eq!(cli.include, ["*.pdf"]);
+            assert_eq!(cli.exclude, ["archive/*"]);
+            assert!(matches!(cli.command, Commands::Check {
+                path: Some(path), repair: true, include_ignored: true,
+            } if path == std::path::Path::new("./materials")));
+        }
+        let cli = Cli::try_parse_from(["dryve", "check"]).unwrap();
+        assert!(matches!(
+            cli.command,
+            Commands::Check {
+                path: None,
+                repair: false,
+                include_ignored: false,
+            }
+        ));
+    }
 
     #[test]
     fn test_pull_output() {

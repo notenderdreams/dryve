@@ -36,7 +36,7 @@ impl std::fmt::Display for RetryableError {
 
 impl std::error::Error for RetryableError {}
 
-fn get_part_path(path: &Path) -> PathBuf {
+pub(crate) fn get_part_path(path: &Path) -> PathBuf {
     let mut part_name = path.file_name().unwrap_or_default().to_os_string();
     part_name.push(".dryve.part");
     path.with_file_name(part_name)
