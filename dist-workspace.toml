@@ -20,3 +20,7 @@ install-updater = false
 
 tap = "notenderdreams/homebrew-tap"
 publish-jobs = ["homebrew"]
+
+# cargo-dist 0.33.1 defaults Apple Silicon builds to the retired macOS 14 image.
+[dist.github-custom-runners]
+aarch64-apple-darwin = "macos-15"
