@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "dryve", version, about = "Drive sync tool")]
@@ -31,6 +32,10 @@ pub enum Commands {
     Pull {
         /// The URL to pull content from
         url: String,
+
+        /// Download directly into this directory (default: remote folder name)
+        #[arg(short, long, value_name = "DIR")]
+        output: Option<PathBuf>,
     },
     /// Synchronize local files with the drive
     #[command(visible_alias = "s")]
@@ -68,8 +73,8 @@ pub fn run() -> Result<()> {
     let exclude = &cli.exclude;
 
     match &cli.command {
-        Commands::Pull { url } => {
-            crate::cmd_pull::run(url, threads, yes, include, exclude)?;
+        Commands::Pull { url, output } => {
+            crate::cmd_pull::run(url, output.as_deref(), threads, yes, include, exclude)?;
         }
         Commands::Sync {
             path,
@@ -101,6 +106,33 @@ pub fn run() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_pull_output() {
+        for flag in ["--output", "-o"] {
+            let cli = Cli::try_parse_from([
+                "dryve",
+                "p",
+                "https://example.com",
+                flag,
+                "./my materials",
+                "-y",
+            ])
+            .unwrap();
+            assert!(cli.yes);
+            match cli.command {
+                Commands::Pull { output, .. } => {
+                    assert_eq!(output, Some(PathBuf::from("./my materials")));
+                }
+                _ => panic!("expected Pull command"),
+            }
+        }
+
+        let cli = Cli::try_parse_from(["dryve", "pull", "https://example.com"]).unwrap();
+        assert!(matches!(cli.command, Commands::Pull { output: None, .. }));
+        assert!(Cli::try_parse_from(["dryve", "pull", "https://example.com", "--output"]).is_err());
+        assert!(Cli::try_parse_from(["dryve", "sync", "--output", "materials"]).is_err());
+    }
 
     #[test]
     fn test_cli_yes_flag_global_before_subcommand() {

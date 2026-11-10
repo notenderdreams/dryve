@@ -70,6 +70,11 @@ dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>"
 # alias
 dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>"
 
+# download directly into a custom directory
+dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>" --output ./materials
+# short option
+dryve p "https://drive.google.com/drive/folders/<FOLDER_ID>" -o ./materials
+
 # non-interactive (skip tree selector)
 dryve pull "https://drive.google.com/drive/folders/<FOLDER_ID>" -y
 
@@ -83,6 +88,12 @@ What it does:
 - Opens an interactive selector with file sizes and live payload total (`j/k` move, `Space` toggle, `i` toggle ignore, `a` toggle all, `/` filter with `*` wildcards, `Tab` toggle in filter, `Esc` clear, `Enter` confirm), or skips it if `-y`/`--yes` is passed. When `--include` / `--exclude` are provided, matching files are pre-selected in the TUI (or directly selected under `-y`).
 - Downloads selected files in parallel (skipping ignored items).
 - Writes metadata to `<root-folder>/dryve.json` (persisting ignored files/folders).
+
+Use `-o, --output <DIR>` to download files and `dryve.json` directly into that directory,
+without adding the remote folder name. Relative and absolute paths are supported;
+missing directories are created. Without this option, the remote folder name is used.
+After a custom-location pull, run `dryve sync ./materials` or run `dryve sync` inside
+that directory.
 
 ### `sync`
 

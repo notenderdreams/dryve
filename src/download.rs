@@ -407,6 +407,7 @@ pub fn download_file(client: &Client, task: &FileTask) -> Result<u64> {
     Ok(final_disk_bytes.saturating_sub(initial_disk_bytes))
 }
 
+/// Download the root folder's contents directly into `base`.
 pub fn download_tree(
     node: &Node,
     base: &Path,
@@ -414,7 +415,9 @@ pub fn download_tree(
     filter: &HashSet<PathBuf>,
 ) -> Result<()> {
     let mut all_tasks = Vec::new();
-    collect_tasks(node, base, &mut all_tasks, false)?;
+    for child in &node.children {
+        collect_tasks(child, base, &mut all_tasks, false)?;
+    }
 
     let tasks: Vec<FileTask> = all_tasks
         .into_iter()
